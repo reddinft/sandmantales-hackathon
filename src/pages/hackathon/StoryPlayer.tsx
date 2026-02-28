@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, narrateScene, type Story, type Scene } from '@/lib/api';
+import { getStory, narrateScene, type Story, type Scene } from '../../lib/api';
 
 export default function StoryPlayer() {
   const { id } = useParams<{ id: string }>();

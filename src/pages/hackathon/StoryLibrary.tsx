@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getStories, type Story } from '@/lib/api';
+import { getStories, type Story } from '../../lib/api';
 
 const LANG_COLORS: Record<string, string> = {
   en: 'bg-indigo-500',

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { generateStory, transcribeVoice } from '@/lib/api';
+import { generateStory, transcribeVoice } from '../../lib/api';
 
 const LANGUAGES = [
   { code: 'en', label: 'EN', name: 'English' },

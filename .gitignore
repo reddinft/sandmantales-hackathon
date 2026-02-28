@@ -8,3 +8,4 @@ dist/
 backend/audio/
 *.mp3
 .vite/
+dist/

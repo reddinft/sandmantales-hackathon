@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import StoryCreator from '@/pages/hackathon/StoryCreator';
-import StoryPlayer from '@/pages/hackathon/StoryPlayer';
-import StoryLibrary from '@/pages/hackathon/StoryLibrary';
+import StoryCreator from './pages/hackathon/StoryCreator';
+import StoryPlayer from './pages/hackathon/StoryPlayer';
+import StoryLibrary from './pages/hackathon/StoryLibrary';
 
 export default function HackathonApp() {
   return (
