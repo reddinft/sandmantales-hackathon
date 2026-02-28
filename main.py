@@ -11,6 +11,23 @@ import traceback
 
 app = FastAPI()
 
+# Serve static files (illustrations)
+from fastapi.staticfiles import StaticFiles
+import os
+_static_dir = os.path.join(os.path.dirname(__file__), "frontend", "public")
+if os.path.exists(_static_dir):
+    app.mount("/illustrations", StaticFiles(directory=os.path.join(_static_dir, "illustrations")), name="illustrations")
+
+# CORS
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Database setup
 DB_PATH = "stories.db"
 

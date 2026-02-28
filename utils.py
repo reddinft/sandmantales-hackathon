@@ -26,11 +26,13 @@ def narrate_scene(text: str, language: str = "en") -> bytes:
         Exception: If the API request fails.
     """
     # Voice ID mapping for supported languages
+    # Use premade voices available in our account
+    # eleven_multilingual_v2 handles any language with any voice
     voice_ids = {
-        "en": "pNInz6obpgDQGcFmaJgB",  # English
-        "ja": "oWAxZDozJ7GehX8VzUYV",  # Japanese
-        "fr": "EXAVITQu4vr4xnSDxMaL",  # French
-        "hi": "5Q0t7uMcjvnagumLfvZi",  # Hindi
+        "en": "pNInz6obpgDQGcFmaJgB",  # Adam - English
+        "ja": "pNInz6obpgDQGcFmaJgB",  # Adam - multilingual
+        "fr": "pNInz6obpgDQGcFmaJgB",  # Adam - multilingual
+        "hi": "pNInz6obpgDQGcFmaJgB",  # Adam - multilingual
     }
 
     # Check if language is supported

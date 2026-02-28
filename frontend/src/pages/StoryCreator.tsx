@@ -13,7 +13,7 @@ export default function StoryCreator() {
     setLoading(true)
     
     try {
-      const response = await fetch('http://localhost:8001/stories', {
+      const response = await fetch('http://localhost:8001/api/story', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,10 +60,10 @@ export default function StoryCreator() {
               onChange={(e) => setLanguage(e.target.value)}
               className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             >
-              <option value="EN">English</option>
-              <option value="JA">Japanese</option>
-              <option value="FR">French</option>
-              <option value="HI">Hindi</option>
+              <option value="en">English</option>
+              <option value="ja">Japanese</option>
+              <option value="fr">French</option>
+              <option value="hi">Hindi</option>
             </select>
           </div>
 
