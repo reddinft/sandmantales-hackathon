@@ -75,6 +75,39 @@ export default function StoryPlayer() {
     )
   }
 
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  const playAudio = async () => {
+    if (!scene.text) return
+    
+    setIsPlaying(true)
+    try {
+      const response = await fetch('http://localhost:8001/api/narrate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: scene.text,
+          language: 'en', // TODO: Get language from story
+        }),
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
+        const audio = new Audio(url)
+        audio.play()
+        audio.onended = () => setIsPlaying(false)
+      }
+    } catch (err) {
+      console.error('Error playing audio:', err)
+      setIsPlaying(false)
+    }
+  }
+
   const scene = scenes[currentScene]
 
   return (
@@ -111,14 +144,15 @@ export default function StoryPlayer() {
             <p className="text-lg leading-relaxed">{scene.text}</p>
           </div>
 
-          {scene.audio_url && (
-            <div className="mb-6">
-              <audio controls className="w-full">
-                <source src={scene.audio_url} type="audio/mpeg" />
-                Your browser does not support the audio element.
-              </audio>
-            </div>
-          )}
+          <div className="mb-6">
+            <button
+              onClick={playAudio}
+              disabled={isPlaying}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isPlaying ? 'Playing...' : 'Play Audio'}
+            </button>
+          </div>
 
           <div className="flex justify-between">
             <button

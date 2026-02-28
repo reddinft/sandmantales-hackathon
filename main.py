@@ -58,7 +58,12 @@ async def generate_story(story: StoryCreate):
         return {**story.dict(), "id": story_id}
 
 @app.post("/api/story", response_model=Story)
-async def create_story_with_agent(prompt: str):
+async def create_story_with_agent(prompt: dict):
+    # Extract inputs from prompt
+    child_name = prompt.get("child_name", "")
+    language = prompt.get("language", "en")
+    story_prompt = prompt.get("prompt", "")
+    
     # Get API key from environment
     api_key = os.environ.get("MISTRAL_API_KEY")
     if not api_key:
@@ -71,7 +76,11 @@ async def create_story_with_agent(prompt: str):
         # Call Mistral agent to generate story
         response = client.beta.conversations.start(
             agent_id='ag_019ca24f110677d7a92ec83a5c85704a',
-            inputs=prompt
+            inputs={
+                "child_name": child_name,
+                "language": language,
+                "prompt": story_prompt
+            }
         )
         
         # Parse response
@@ -84,20 +93,52 @@ async def create_story_with_agent(prompt: str):
         async with await get_db() as db:
             cursor = await db.execute(
                 "INSERT INTO stories (title, content, voice_id) VALUES (?, ?, ?)",
-                (f"Generated Story: {prompt[:50]}", story_content, None)
+                (f"Story for {child_name}", story_content, None)
             )
             await db.commit()
             story_id = cursor.lastrowid
         
         return {
             "id": story_id,
-            "title": f"Generated Story: {prompt[:50]}",
+            "title": f"Story for {child_name}",
             "content": story_content,
             "voice_id": None
         }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating story: {str(e)}")
+
+
+@app.post("/api/narrate")
+async def narrate_scene_endpoint(scene: dict):
+    """
+    Narrate a scene text in a given language using ElevenLabs API.
+    Returns MP3 audio bytes.
+    
+    Args:
+        scene (dict): {
+            "text": str,
+            "language": str (optional, defaults to "en")
+        }
+    
+    Returns:
+        StreamingResponse: MP3 audio file.
+    """
+    from utils import narrate_scene
+    
+    text = scene.get("text", "")
+    language = scene.get("language", "en")
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    
+    try:
+        mp3_bytes = narrate_scene(text, language)
+        return StreamingResponse(iter([mp3_bytes]), media_type="audio/mpeg")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error narrating scene: {str(e)}")
 
 @app.post("/api/voice/narrate")
 async def narrate_story(id: int):
