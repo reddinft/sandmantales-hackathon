@@ -325,3 +325,28 @@ The DreamBooth script loads every file in `instance_data_dir` as an image — in
 **Checkpoints:** step-250, step-500
 **Hardware:** Apple M4 Mac Mini 24GB (all competing services paused)
 **Trigger token:** `sndmntls style`
+
+### 19:26–19:42 — LoRA Fine-tuning COMPLETE ✅
+
+**Model:** `stable-diffusion-v1-5/stable-diffusion-v1-5` (HuggingFace)
+**Method:** DreamBooth LoRA via official HuggingFace `train_dreambooth_lora.py`
+**Training time:** 15:21 (500 steps × ~1.82s/step)
+**Final loss:** 0.0022
+**Weights:** `lora_weights/pytorch_lora_weights.safetensors` (3.1MB)
+**Checkpoints:** step-250 + step-500
+
+**Why SD 1.5 over FLUX:**
+- FLUX.1-schnell (12B params, float32) = ~18GB — hit 30GB MPS ceiling on 24GB Mac Mini
+- SD 1.5 (860M UNet, float32) = ~4GB — ran at only 6% memory with no issues
+- Same prize category, same HuggingFace ecosystem, actually completes training
+- The architectural story is better: purposeful model selection for edge hardware
+
+**Gotcha #7:** `txt` caption sidecars in `instance_data_dir` — PIL tried to open them as images. Fix: move to `training_captions/` subdirectory before training.
+
+**Training pipeline (full):**
+1. Gemini 3 Pro Image generates 20 storybook training images (3min)
+2. HuggingFace DreamBooth LoRA fine-tunes SD 1.5 (15min)
+3. compare_models.py generates base vs LoRA side-by-sides (3min)
+4. Total pipeline: ~21 minutes from zero to fine-tuned model
+
+**Results:** 3 × side-by-side comparison images generated and sent to Nissan via Telegram.
