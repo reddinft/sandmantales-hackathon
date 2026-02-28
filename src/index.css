@@ -1,0 +1,250 @@
+@tailwind base;
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+@tailwind components;
+@tailwind utilities;
+
+/* Fonts loaded via index.html with preload for better LCP */
+
+@layer base {
+  :root {
+    /* Night sky palette */
+    --background: 232 47% 8%;
+    --foreground: 45 100% 96%;
+
+    --card: 232 40% 12%;
+    --card-foreground: 45 100% 96%;
+
+    --popover: 232 40% 12%;
+    --popover-foreground: 45 100% 96%;
+
+    /* Warm amber/gold - magical light */
+    --primary: 38 92% 65%;
+    --primary-foreground: 232 47% 8%;
+
+    /* Soft lavender mist */
+    --secondary: 270 30% 25%;
+    --secondary-foreground: 270 60% 90%;
+
+    /* Deep purple accent */
+    --accent: 280 60% 45%;
+    --accent-foreground: 45 100% 96%;
+
+    --muted: 232 30% 18%;
+    --muted-foreground: 232 20% 60%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 45 100% 96%;
+
+    --border: 232 30% 20%;
+    --input: 232 30% 20%;
+    --ring: 38 92% 65%;
+
+    --radius: 1rem;
+
+    /* Custom DreamWeaver tokens */
+    --starlight: 45 100% 85%;
+    --moonbeam: 220 60% 80%;
+    --twilight: 260 40% 35%;
+    --midnight: 232 50% 6%;
+    --aurora-start: 280 70% 50%;
+    --aurora-end: 200 80% 60%;
+    
+    /* Gradients */
+    --gradient-night: linear-gradient(180deg, hsl(232 50% 6%) 0%, hsl(260 40% 15%) 50%, hsl(232 47% 8%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(38 92% 65% / 0.15) 0%, transparent 70%);
+    --gradient-aurora: linear-gradient(135deg, hsl(280 70% 50% / 0.3) 0%, hsl(200 80% 60% / 0.2) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(232 40% 14%) 0%, hsl(232 40% 10%) 100%);
+    
+    /* Shadows */
+    --shadow-glow: 0 0 40px hsl(38 92% 65% / 0.2);
+    --shadow-soft: 0 4px 24px hsl(232 50% 6% / 0.5);
+    --shadow-star: 0 0 20px hsl(45 100% 85% / 0.5);
+
+    --sidebar-background: 232 40% 10%;
+    --sidebar-foreground: 45 100% 96%;
+    --sidebar-primary: 38 92% 65%;
+    --sidebar-primary-foreground: 232 47% 8%;
+    --sidebar-accent: 270 30% 25%;
+    --sidebar-accent-foreground: 270 60% 90%;
+    --sidebar-border: 232 30% 20%;
+    --sidebar-ring: 38 92% 65%;
+  }
+
+  .dark {
+    --background: 232 47% 8%;
+    --foreground: 45 100% 96%;
+    --card: 232 40% 12%;
+    --card-foreground: 45 100% 96%;
+    --popover: 232 40% 12%;
+    --popover-foreground: 45 100% 96%;
+    --primary: 38 92% 65%;
+    --primary-foreground: 232 47% 8%;
+    --secondary: 270 30% 25%;
+    --secondary-foreground: 270 60% 90%;
+    --accent: 280 60% 45%;
+    --accent-foreground: 45 100% 96%;
+    --muted: 232 30% 18%;
+    --muted-foreground: 232 20% 60%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 45 100% 96%;
+    --border: 232 30% 20%;
+    --input: 232 30% 20%;
+    --ring: 38 92% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Nunito', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Quicksand', sans-serif;
+  }
+}
+
+@layer components {
+  .text-gradient-magic {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--starlight)) 50%, hsl(var(--primary)) 100%);
+  }
+
+  .bg-night-sky {
+    background: var(--gradient-night);
+  }
+
+  .glow-amber {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .card-magical {
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-soft);
+  }
+}
+
+@layer utilities {
+  /* Floating animation for stars */
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-10px) rotate(5deg);
+    }
+  }
+
+  @keyframes twinkle {
+    0%, 100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 0.5;
+      filter: blur(20px);
+    }
+    50% {
+      opacity: 0.8;
+      filter: blur(30px);
+    }
+  }
+
+  @keyframes drift {
+    0% {
+      transform: translateX(0) translateY(0);
+    }
+    25% {
+      transform: translateX(10px) translateY(-5px);
+    }
+    50% {
+      transform: translateX(5px) translateY(5px);
+    }
+    75% {
+      transform: translateX(-5px) translateY(-3px);
+    }
+    100% {
+      transform: translateX(0) translateY(0);
+    }
+  }
+
+  @keyframes sceneSlideIn {
+    0% {
+      opacity: 0;
+      transform: translateX(30px) scale(0.95);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      opacity: 0;
+      transform: translateX(-100%);
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-twinkle {
+    animation: twinkle 3s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 4s ease-in-out infinite;
+  }
+
+  .animate-drift {
+    animation: drift 20s ease-in-out infinite;
+  }
+
+  /* CSS containment for performance */
+  .contain-strict {
+    contain: strict;
+  }
+
+  .contain-layout {
+    contain: layout;
+  }
+
+  .contain-paint {
+    contain: paint;
+  }
+
+  /* GPU acceleration hints */
+  .will-change-transform {
+    will-change: transform;
+  }
+
+  .will-change-opacity {
+    will-change: opacity;
+  }
+}

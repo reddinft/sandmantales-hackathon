@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.db
+node_modules/
+dist/
+.env
+.env.local
+backend/audio/
+*.mp3
+.vite/
