@@ -218,3 +218,110 @@ _Last updated: 2026-02-28 18:05 AEST_
 - Built frontend production bundle served by FastAPI at `/app/*`
 
 **Key lesson:** Fine-tuning FLUX on Apple Silicon 24GB is at the edge of feasibility. The 12B parameter model + LoRA + VAE + text encoders need careful memory management. Real production would need 48GB+ or cloud GPU.
+
+---
+
+## 🔧 Apple Silicon Fine-Tuning Gotchas (24GB M4 Mac Mini)
+
+_These are the real-world lessons from attempting FLUX.1-schnell LoRA fine-tuning on consumer hardware. Each one cost us 10-30 minutes of debugging during a hackathon._
+
+### Gotcha 1: HuggingFace Gated Models
+**Problem:** `GatedRepoError (401)` — FLUX.1-schnell requires you to accept the license on huggingface.co AND authenticate locally.
+**Fix:** `huggingface_hub.login(token=HF_TOKEN)` in the training venv. The token in your gateway plist or shell env doesn't carry into a different Python venv.
+**Time lost:** 10 minutes
+
+### Gotcha 2: MPS Out-of-Memory at 30GB
+**Problem:** `RuntimeError: MPS backend out of memory (MPS allocated: 30.12 GiB, max allowed: 30.19 GiB)`
+FLUX.1-schnell is 12B params. The full pipeline (transformer + VAE + 2 text encoders) needs ~18GB. Add LoRA wrapping + optimizer states + gradients = 30GB+.
+**Fix:** Set `PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0` to disable the limit. Reduce rank (16→4), resolution (512→256). Kill competing services (Ollama, Docker, Control Plane).
+**Time lost:** 20 minutes
+
+### Gotcha 3: Docker VM is a Silent Memory Hog
+**Problem:** Docker Desktop's Linux VM (`com.apple.Virtualization.VirtualMachine`) was consuming 5.3GB (21% of RAM) just by being open — even with zero containers running.
+**Fix:** Quit Docker Desktop entirely: `osascript -e 'quit app "Docker"'`. Freed ~5GB immediately.
+**Lesson:** On 24GB machines, Docker and ML training are mutually exclusive activities.
+**Time lost:** 5 minutes
+
+### Gotcha 4: FLUX Tensor Shape Mismatches in Custom Training Loops
+**Problem:** `RuntimeError: linear(): input and weight.T shapes cannot be multiplied (32x32 and 64x3072)`
+Writing a manual training loop for FLUX is tricky — the transformer expects packed latents in a specific format (height/width packing, interleaved text/image IDs).
+**Fix:** Use HuggingFace's official `train_dreambooth_lora_flux.py` script instead of hand-rolling the training loop. It handles all the FLUX-specific tensor wrangling.
+**Lesson:** Don't write custom training loops for novel architectures during a hackathon. Use the official scripts.
+**Time lost:** 15 minutes
+
+### Gotcha 5: Training Data Quality > Quantity
+**Problem:** Original plan was to generate training images WITH FLUX itself (circular — training on your own output just reinforces existing patterns).
+**Fix:** Used Gemini Nano Banana Pro (Gemini 3 Pro Image API) to generate 20 training images. 1K resolution, ~2MB each, professional storybook quality. Total generation time: ~3 minutes.
+**Lesson:** Cross-model training data is dramatically better. Gemini provides the quality ceiling, FLUX becomes the local private inference engine.
+**Time lost:** 0 (this was a proactive decision)
+
+### Gotcha 6: float32 Required on MPS
+**Problem:** PyTorch float16 silently produces NaN outputs on Apple Silicon for diffusion model pipelines.
+**Fix:** Always use `torch_dtype=torch.float32` on MPS. This doubles memory usage vs CUDA float16 — which is why 24GB is so tight.
+**Lesson:** All the CUDA fine-tuning tutorials say "use fp16". On Apple Silicon, you can't. Plan your memory budget around float32.
+
+### Services Temporarily Paused for Training
+| Service | Port | RAM freed | Restart command |
+|---------|------|-----------|-----------------|
+| Docker Desktop | — | ~5GB | Open Docker.app |
+| Ollama | 11434 | ~500MB (no models loaded) | `ollama serve` |
+| Hybrid Control Plane | 8765 | ~100MB | `launchctl start com.openclaw.control-plane` |
+| Image Gen Studio | 7860 | ~100MB | `launchctl start com.openclaw.image-gen-studio` |
+| Dashboard | 8000 | ~50MB | `launchctl start ai.openclaw.dashboard` |
+| **Total freed** | | **~5.8GB** | |
+
+### The Math
+- Mac Mini M4: 24GB unified memory (CPU + GPU share the same pool)
+- FLUX.1-schnell pipeline: ~18GB (float32)
+- LoRA adapters (rank 4): ~50MB
+- Optimizer states: ~100MB
+- Gradients + activations: ~2-4GB per step
+- **Total needed: ~22GB** — leaves only 2GB for macOS + other processes
+- **Recommendation:** M4 Pro 48GB for comfortable fine-tuning, M4 Max 128GB for production
+
+### Training Configuration (Final Working)
+```
+Model: black-forest-labs/FLUX.1-schnell
+Method: LoRA (DreamBooth)
+Script: HuggingFace official train_dreambooth_lora_flux.py
+Rank: 4
+Resolution: 256 (compromised from 512 due to memory)
+Steps: 500
+Learning rate: 1e-4
+Batch size: 1
+Mixed precision: off (float32 required for MPS)
+Training data: 20 Gemini-generated 1K images
+PYTORCH_MPS_HIGH_WATERMARK_RATIO: 0.0
+```
+
+### Gotcha 7: transformers 5.x breaks official DreamBooth script
+**Problem:** `TypeError: argument 'cls': 'NoneType' object cannot be interpreted as an integer` in `CLIPTokenizer.from_pretrained()`.
+The official HuggingFace `train_dreambooth_lora_flux.py` was written targeting `transformers ~4.40`. `transformers 5.x` introduced breaking changes to tokenizer internals.
+**Fix:** `pip install "transformers==4.44.2"` — pin to 4.x in the training venv.
+**Lesson:** When using official HF example scripts, check their `requirements.txt` for the target transformers version. The main library and examples don't always stay in sync.
+**Time lost:** 10 minutes
+
+### Gotcha 7: instance_data_dir Loads ALL Files (Including .txt Captions)
+**Problem:** `PIL.UnidentifiedImageError: cannot identify image file 'training_data/img_05.txt'`
+The DreamBooth script loads every file in `instance_data_dir` as an image — including our `.txt` caption sidecars.
+**Fix:** `mv training_data/*.txt training_captions/` — keep only `.png` files in the training dir.
+**Time lost:** 5 minutes
+
+### Gotcha 8: FLUX.1-schnell is Too Large for 24GB Unified Memory
+**Problem:** FLUX.1-schnell (12B params, float32) needs ~22GB just to load + LoRA wrap. With other OS processes, the 24GB M4 Mac Mini can't sustain a full forward pass without the OS killing the process silently (no OOM error, just exits).
+**Fix:** Switched to `stable-diffusion-v1-5` (860M params, ~4GB) — same HuggingFace ecosystem, same LoRA technique, actually completes training.
+**Lesson:** Know your model's memory footprint before the hackathon. FLUX requires 48GB+ for fine-tuning on Apple Silicon.
+**Time lost:** ~45 minutes total across 4 crash-restart cycles
+
+---
+
+## 🏆 Final Training Results
+
+**Model:** `stable-diffusion-v1-5/stable-diffusion-v1-5` (HuggingFace)
+**Method:** DreamBooth LoRA (`train_dreambooth_lora.py`)
+**Training data:** 20 Gemini Nano Banana Pro generated images
+**Steps:** 500 | **Time:** 15m 21s | **Final loss:** 0.0022
+**Output:** `lora_weights/pytorch_lora_weights.safetensors` (3.1MB)
+**Checkpoints:** step-250, step-500
+**Hardware:** Apple M4 Mac Mini 24GB (all competing services paused)
+**Trigger token:** `sndmntls style`

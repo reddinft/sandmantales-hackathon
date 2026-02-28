@@ -1,59 +1,53 @@
 #!/usr/bin/env python3
-"""
-Generate comparison images: base FLUX vs fine-tuned FLUX.
-Produces side-by-side images for the demo.
-"""
-
-import subprocess
-import os
+"""Generate base vs fine-tuned comparison images."""
+import torch, os
+from diffusers import StableDiffusionPipeline
 from PIL import Image
 
-MFLUX = "/Users/loki/.pyenv/versions/3.14.3/bin/mflux-generate"
-OUTDIR = "/tmp/sandmantales-hackathon/comparison"
-
-PROMPTS = [
-    "A small kitten sleeping under a glowing mushroom in a magical forest, children book illustration, watercolor style",
-    "A friendly dragon reading a bedtime story to baby animals, children book illustration, soft warm lighting",
-    "A little girl riding a cloud shaped like a unicorn over a sleeping village, dreamy atmosphere, kid-friendly",
+prompts = [
+    "sndmntls style, children book illustration, watercolor style, a small fox sitting under a glowing mushroom in a moonlit forest",
+    "sndmntls style, children book illustration, watercolor style, a friendly whale made of clouds floating above a sleeping village",
+    "sndmntls style, children book illustration, watercolor style, a kitten discovering a garden of glowing flowers at night",
 ]
 
-def generate(prompt, output, seed=42, lora_path=None):
-    cmd = [MFLUX, "--model", "schnell", "--prompt", prompt,
-           "--width", "512", "--height", "512", "--steps", "2",
-           "--seed", str(seed), "--output", output]
-    if lora_path:
-        cmd.extend(["--lora-paths", lora_path])
-    subprocess.run(cmd, capture_output=True)
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+lora_path = "./lora_weights"
+out_dir = "./comparisons"
+os.makedirs(out_dir, exist_ok=True)
 
-def main():
-    os.makedirs(OUTDIR, exist_ok=True)
-    lora_path = "/tmp/sandmantales-hackathon/lora_weights"
+device = "mps" if torch.backends.mps.is_available() else "cpu"
+print(f"Device: {device}")
 
-    for i, prompt in enumerate(PROMPTS):
-        print(f"Prompt {i+1}: {prompt[:60]}...")
-        
-        # Base model
-        base_out = f"{OUTDIR}/prompt_{i}_base.png"
-        print(f"  Base FLUX...", end=" ", flush=True)
-        generate(prompt, base_out, seed=42+i)
-        print("✅")
-        
-        # Fine-tuned
-        lora_out = f"{OUTDIR}/prompt_{i}_lora.png"
-        print(f"  LoRA FLUX...", end=" ", flush=True)
-        generate(prompt, lora_out, seed=42+i, lora_path=lora_path)
-        print("✅")
-        
-        # Side by side
-        base_img = Image.open(base_out)
-        lora_img = Image.open(lora_out)
-        combined = Image.new("RGB", (1024, 512))
-        combined.paste(base_img, (0, 0))
-        combined.paste(lora_img, (512, 0))
-        combined.save(f"{OUTDIR}/prompt_{i}_comparison.png")
-        print(f"  Saved comparison")
+# Base model
+print("Loading base model...")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float32)
+pipe.to(device)
 
-    print(f"\n✅ All comparisons in {OUTDIR}/")
+for i, prompt in enumerate(prompts):
+    print(f"[{i+1}/3] Base: generating...")
+    img = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, generator=torch.manual_seed(42)).images[0]
+    img.save(f"{out_dir}/base_{i+1}.png")
+    print(f"  Saved base_{i+1}.png")
 
-if __name__ == "__main__":
-    main()
+# Load LoRA
+print("\nLoading LoRA weights...")
+pipe.load_lora_weights(lora_path)
+
+for i, prompt in enumerate(prompts):
+    print(f"[{i+1}/3] LoRA: generating...")
+    img = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, generator=torch.manual_seed(42)).images[0]
+    img.save(f"{out_dir}/lora_{i+1}.png")
+    print(f"  Saved lora_{i+1}.png")
+
+# Side-by-side
+print("\nCreating side-by-side comparisons...")
+for i in range(3):
+    base = Image.open(f"{out_dir}/base_{i+1}.png")
+    lora = Image.open(f"{out_dir}/lora_{i+1}.png")
+    combined = Image.new('RGB', (base.width * 2 + 20, base.height + 40), (30, 30, 30))
+    combined.paste(base, (0, 40))
+    combined.paste(lora, (base.width + 20, 40))
+    combined.save(f"{out_dir}/compare_{i+1}.png")
+    print(f"  Saved compare_{i+1}.png")
+
+print("\n✅ Done! Comparisons at ./comparisons/")
