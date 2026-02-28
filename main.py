@@ -1,15 +1,18 @@
 from fastapi import FastAPI, HTTPException
+from starlette.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import aiosqlite
 import os
-from mistralai import Mistral
+import asyncio
+import subprocess
+import json
+import traceback
 
 app = FastAPI()
 
 # Database setup
-async def get_db():
-    return await aiosqlite.connect("stories.db")
+DB_PATH = "stories.db"
 
 # Pydantic models
 class StoryBase(BaseModel):
@@ -48,7 +51,7 @@ async def startup():
 # Endpoints
 @app.post("/api/story/generate", response_model=Story)
 async def generate_story(story: StoryCreate):
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO stories (title, content, voice_id) VALUES (?, ?, ?)",
             (story.title, story.content, story.voice_id)
@@ -57,55 +60,68 @@ async def generate_story(story: StoryCreate):
         story_id = cursor.lastrowid
         return {**story.dict(), "id": story_id}
 
-@app.post("/api/story", response_model=Story)
+async def call_pathfinder(prompt: str) -> str:
+    proc = await asyncio.create_subprocess_exec(
+        '/Users/loki/.pyenv/versions/3.14.3/bin/python3', 'team.py', 'pathfinder', prompt,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ},
+        cwd='/tmp/sandmantales-hackathon'
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise Exception(f"team.py failed (rc={proc.returncode}): {stderr.decode()[:500]}")
+    return stdout.decode()
+
+@app.post("/api/story")
 async def create_story_with_agent(prompt: dict):
     # Extract inputs from prompt
     child_name = prompt.get("child_name", "")
     language = prompt.get("language", "en")
     story_prompt = prompt.get("prompt", "")
     
-    # Get API key from environment
-    api_key = os.environ.get("MISTRAL_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY environment variable not set")
-    
-    # Initialize Mistral client
-    client = Mistral(api_key=api_key)
-    
     try:
-        # Call Mistral agent to generate story
-        response = client.beta.conversations.start(
-            agent_id='ag_019ca24f110677d7a92ec83a5c85704a',
-            inputs={
-                "child_name": child_name,
-                "language": language,
-                "prompt": story_prompt
-            }
-        )
+        # Build prompt string
+        prompt = f'Generate a bedtime story for {child_name} in {language}. Story idea: {story_prompt}. Return a JSON object with keys: title (string), scenes (array of objects with text, mood, illustration_prompt).'
         
-        # Parse response
-        if not response.outputs or not response.outputs[0].content:
-            raise HTTPException(status_code=500, detail="No response from agent")
+        # Call team.py to generate story via subprocess
+        response_text = await call_pathfinder(prompt)
         
-        story_content = response.outputs[0].content
+        # Parse response text - everything before "---\nConversation ID:" is the content
+        content_text = response_text.split('\n---\n')[0].strip()
+        
+        # Strip markdown code fences if present
+        if content_text.startswith('```'):
+            content_text = content_text.split('\n', 1)[1] if '\n' in content_text else content_text[3:]
+            if content_text.endswith('```'):
+                content_text = content_text[:-3].strip()
+        
+        if not content_text:
+            raise HTTPException(status_code=500, detail="No valid story data in response")
+        
+        story_data = json.loads(content_text)
+        
+        title = story_data.get('title', f'Story for {child_name}')
+        scenes = story_data.get('scenes', [])
         
         # Save to database
-        async with await get_db() as db:
+        async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute(
                 "INSERT INTO stories (title, content, voice_id) VALUES (?, ?, ?)",
-                (f"Story for {child_name}", story_content, None)
+                (title, json.dumps({"scenes": scenes}), None)
             )
             await db.commit()
             story_id = cursor.lastrowid
         
         return {
             "id": story_id,
-            "title": f"Story for {child_name}",
-            "content": story_content,
+            "title": title,
+            "content": {"scenes": scenes},
             "voice_id": None
         }
     
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generating story: {str(e)}")
 
 
@@ -142,7 +158,7 @@ async def narrate_scene_endpoint(scene: dict):
 
 @app.post("/api/voice/narrate")
 async def narrate_story(id: int):
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "SELECT voice_id FROM stories WHERE id = ?", (id,)
         )
@@ -153,14 +169,14 @@ async def narrate_story(id: int):
 
 @app.get("/api/stories", response_model=list[Story])
 async def get_stories():
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("SELECT id, title, content, voice_id FROM stories")
         rows = await cursor.fetchall()
         return [{"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3]} for row in rows]
 
 @app.get("/api/stories/{id}", response_model=Story)
 async def get_story(id: int):
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "SELECT id, title, content, voice_id FROM stories WHERE id = ?", (id,)
         )

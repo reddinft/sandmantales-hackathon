@@ -86,11 +86,25 @@ def main():
             }
             save_conversations(conversations)
 
-        # Print response
-        if response.outputs and response.outputs[0].content:
-            print(response.outputs[0].content)
-        else:
+        # Print response — handle both MessageOutputEntry and FunctionCallEntry
+        if not response.outputs:
             print("Error: No response from agent")
+            return 1
+        
+        output = response.outputs[0]
+        output_type = type(output).__name__
+        
+        if output_type == 'FunctionCallEntry':
+            # Agent returned a function call — arguments contain the data
+            args_data = output.arguments
+            if isinstance(args_data, dict):
+                print(json.dumps(args_data, indent=2, ensure_ascii=False))
+            else:
+                print(str(args_data))
+        elif hasattr(output, 'content') and output.content:
+            print(output.content)
+        else:
+            print("Error: No usable response from agent")
             return 1
 
         # Print conversation ID for reference
