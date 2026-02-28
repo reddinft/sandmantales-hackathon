@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  sandmantales:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+    volumes:
+      - ./stories.db:/app/stories.db
+      - ./demo_images:/app/frontend/public/illustrations
