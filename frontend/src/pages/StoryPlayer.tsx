@@ -1,163 +1,161 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, Link } from 'react-router-dom';
 
-interface Scene {
-  title?: string
-  text: string
-  mood?: string
-  illustration_prompt?: string
-  illustration_url?: string
-}
+type Scene = {
+  title: string;
+  text: string;
+  mood: string;
+  illustration_prompt: string;
+  illustration_url: string;
+};
 
-export default function StoryPlayer() {
-  const { id } = useParams<{ id: string }>()
-  const [title, setTitle] = useState('')
-  const [scenes, setScenes] = useState<Scene[]>([])
-  const [currentScene, setCurrentScene] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const navigate = useNavigate()
+type StoryContent = {
+  scenes: Scene[];
+};
+
+const StoryPlayer: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const [story, setStory] = useState<StoryContent | null>(null);
+  const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const fetchStory = async () => {
       try {
-        const response = await fetch(`/api/stories/${id}`)
-        if (response.ok) {
-          const data = await response.json()
-          setTitle(data.title || 'Untitled Story')
-          // Content is stored as JSON string in DB
-          let content = data.content
-          if (typeof content === 'string') {
-            content = JSON.parse(content)
-          }
-          setScenes(content?.scenes || [])
-        } else {
-          setError('Story not found')
-        }
-      } catch (err) {
-        setError('Failed to load story')
-        console.error(err)
-      } finally {
-        setLoading(false)
+        const response = await fetch(`/api/stories/${id}`);
+        const data = await response.json();
+        setStory(JSON.parse(data.content));
+      } catch (error) {
+        console.error('Failed to fetch story:', error);
       }
-    }
-    if (id) fetchStory()
-  }, [id])
+    };
 
-  const playAudio = async () => {
-    if (!scenes[currentScene]?.text) return
-    setIsPlaying(true)
+    fetchStory();
+  }, [id]);
+
+  const handleNextScene = () => {
+    if (story && currentSceneIndex < story.scenes.length - 1) {
+      setCurrentSceneIndex(currentSceneIndex + 1);
+    }
+  };
+
+  const handlePrevScene = () => {
+    if (currentSceneIndex > 0) {
+      setCurrentSceneIndex(currentSceneIndex - 1);
+    }
+  };
+
+  const handleListen = async () => {
+    if (!story) return;
+
+    const scene = story.scenes[currentSceneIndex];
     try {
       const response = await fetch('/api/narrate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: scenes[currentScene].text, language: 'en' }),
-      })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: scene.text,
+          language: 'fr',
+        }),
+      });
+
       if (response.ok) {
-        const blob = await response.blob()
-        const url = URL.createObjectURL(blob)
-        const audio = new Audio(url)
-        audio.play()
-        audio.onended = () => setIsPlaying(false)
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          audioRef.current.play();
+          setIsPlaying(true);
+        }
       }
-    } catch (err) {
-      console.error('Error playing audio:', err)
-      setIsPlaying(false)
+    } catch (error) {
+      console.error('Failed to narrate:', error);
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-900 text-zinc-100 flex items-center justify-center">
-        <div className="text-indigo-500 text-xl animate-pulse">Loading story...</div>
-      </div>
-    )
-  }
-
-  if (error || scenes.length === 0) {
-    return (
-      <div className="min-h-screen bg-zinc-900 text-zinc-100 flex items-center justify-center">
-        <div className="text-zinc-400 text-xl">{error || 'No scenes available'}</div>
-      </div>
-    )
-  }
-
-  const scene = scenes[currentScene]
+  const currentScene = story?.scenes[currentSceneIndex];
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-100 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <button onClick={() => navigate('/library')} className="text-indigo-500 hover:text-indigo-400 transition-colors">
-            ← Back to Library
-          </button>
-          <h1 className="text-xl font-bold text-indigo-400">{title}</h1>
-          <div className="text-indigo-500 font-medium">
-            Scene {currentScene + 1} of {scenes.length}
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-900 to-purple-900 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[url('/stars.png')] opacity-30 animate-pulse"></div>
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+        <Link
+          to="/library"
+          className="absolute top-6 left-6 flex items-center text-amber-200 hover:text-amber-100 transition-colors duration-300"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Back to Library
+        </Link>
 
-        <div className="bg-zinc-800 rounded-lg p-8 mb-8">
-          {scene.title && (
-            <h2 className="text-2xl font-bold text-indigo-300 mb-4">{scene.title}</h2>
-          )}
-          {scene.mood && (
-            <span className="inline-block px-3 py-1 bg-indigo-900/50 text-indigo-300 rounded-full text-sm mb-4">
-              {scene.mood}
-            </span>
-          )}
-
-          <div className="mb-6">
-            {scene.illustration_url ? (
-              <img
-                src={`http://localhost:8001${scene.illustration_url}`}
-                alt={scene.title || 'Scene illustration'}
-                className="w-full max-h-80 object-contain rounded-md bg-zinc-700"
-              />
-            ) : (
-              <div className="w-full h-64 bg-zinc-700 rounded-md flex items-center justify-center text-zinc-500">
-                🎨 Illustration coming soon
+        <div className="w-full max-w-4xl bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6 border border-white/20">
+          {currentScene && (
+            <>
+              <div className="relative mb-6 rounded-2xl overflow-hidden shadow-amber-500/50 shadow-lg">
+                <img
+                  src={`http://localhost:8001${currentScene.illustration_url}`}
+                  alt={currentScene.illustration_prompt}
+                  className="w-full h-96 object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-amber-900/50 to-transparent"></div>
+                <div className="absolute bottom-0 left-0 right-0 p-6">
+                  <h1 className="text-3xl font-bold text-amber-50 mb-2">{currentScene.title}</h1>
+                  <div className="inline-block px-3 py-1 bg-amber-200/20 text-amber-100 text-sm rounded-full border border-amber-200/30">
+                    {currentScene.mood}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
 
-          <div className="mb-6">
-            <p className="text-lg leading-relaxed">{scene.text}</p>
-          </div>
+              <div className="space-y-6 text-amber-50 leading-relaxed">
+                <p className="text-lg">{currentScene.text}</p>
+              </div>
 
-          <div className="flex items-center gap-4 mb-6">
-            <button
-              onClick={playAudio}
-              disabled={isPlaying}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-6 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {isPlaying ? '🔊 Playing...' : '▶️ Listen'}
-            </button>
-          </div>
+              <div className="flex items-center justify-between mt-8">
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={handlePrevScene}
+                    disabled={currentSceneIndex === 0}
+                    className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="text-amber-100">
+                    Scene {currentSceneIndex + 1} of {story.scenes.length}
+                  </span>
+                  <button
+                    onClick={handleNextScene}
+                    disabled={currentSceneIndex === story.scenes.length - 1}
+                    className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
 
-          <div className="flex justify-between">
-            <button
-              onClick={() => setCurrentScene(c => Math.max(0, c - 1))}
-              disabled={currentScene === 0}
-              className={`px-6 py-2 rounded-md transition-colors ${
-                currentScene === 0 ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed' : 'bg-indigo-500 hover:bg-indigo-600'
-              }`}
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={() => setCurrentScene(c => Math.min(scenes.length - 1, c + 1))}
-              disabled={currentScene === scenes.length - 1}
-              className={`px-6 py-2 rounded-md transition-colors ${
-                currentScene === scenes.length - 1 ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed' : 'bg-indigo-500 hover:bg-indigo-600'
-              }`}
-            >
-              Next →
-            </button>
-          </div>
+                <button
+                  onClick={handleListen}
+                  className="flex items-center space-x-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-full shadow-lg hover:shadow-amber-500/50 transition-all duration-300"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  <span>{isPlaying ? 'Playing...' : 'Listen'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
+      <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
     </div>
-  )
-}
+  );
+};
+
+export default StoryPlayer;

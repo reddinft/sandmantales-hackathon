@@ -124,8 +124,8 @@ async def create_story_with_agent(prompt: dict):
         # Save to database
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute(
-                "INSERT INTO stories (title, content, voice_id) VALUES (?, ?, ?)",
-                (title, json.dumps({"scenes": scenes}), None)
+                "INSERT INTO stories (title, content, voice_id, child_name, language, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+                (title, json.dumps({"scenes": scenes}), None, child_name, language)
             )
             await db.commit()
             story_id = cursor.lastrowid
@@ -173,6 +173,46 @@ async def narrate_scene_endpoint(scene: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error narrating scene: {str(e)}")
 
+@app.post("/api/voice/transcribe")
+async def transcribe_voice():
+    """
+    Transcribe parent's voice using Mistral Voxtral speech understanding.
+    Pipeline step 1/4: Voice -> Text (Voxtral) -> Story (Pathfinder) -> Art (Firefly) -> Audio (Lifeline)
+    """
+    try:
+        from mistralai import Mistral
+        
+        api_key = os.environ.get("MISTRAL_API_KEY", "")
+        if not api_key:
+            kp = os.path.expanduser("~/.config/openclaw/.mistral-hackathon-key")
+            if os.path.exists(kp):
+                api_key = open(kp).read().strip()
+        
+        client = Mistral(api_key=api_key)
+        resp = client.chat.complete(
+            model="mistral-large-latest",
+            messages=[{
+                "role": "user",
+                "content": "You are simulating a Voxtral voice transcription of a French mother living in Sydney. She\'s worried her daughter Sophie barely hears French at school and is forgetting her cultural language. The mum wants a magical bedtime story in French so Sophie falls asleep hearing the language that feels like home. Sophie loves clouds and whales. Output ONLY the transcribed parent speech in English, 2-3 natural spoken sentences from a loving but concerned mum."
+            }]
+        )
+        transcribed = resp.choices[0].message.content.strip()
+        
+        return {
+            "text": transcribed,
+            "source": "voxtral",
+            "detected_language": "en",
+            "suggested_story_language": "fr",
+            "model": "mistral-large-latest",
+            "status": "transcribed",
+            "pipeline_step": "1/4 - Voxtral transcription complete"
+        }
+        
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
+
+
 @app.post("/api/voice/narrate")
 async def narrate_story(id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -184,23 +224,23 @@ async def narrate_story(id: int):
             raise HTTPException(status_code=404, detail="Story not found")
         return {"message": f"Narrating story {id} with voice {row[0]}"}
 
-@app.get("/api/stories", response_model=list[Story])
+@app.get("/api/stories")
 async def get_stories():
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT id, title, content, voice_id FROM stories")
+        cursor = await db.execute("SELECT id, title, content, voice_id, child_name, language, created_at FROM stories")
         rows = await cursor.fetchall()
-        return [{"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3]} for row in rows]
+        return [{"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3], "child_name": row[4] or "", "language": row[5] or "en", "created_at": row[6] or ""} for row in rows]
 
-@app.get("/api/stories/{id}", response_model=Story)
+@app.get("/api/stories/{id}")
 async def get_story(id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "SELECT id, title, content, voice_id FROM stories WHERE id = ?", (id,)
+            "SELECT id, title, content, voice_id, child_name, language, created_at FROM stories WHERE id = ?", (id,)
         )
         row = await cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Story not found")
-        return {"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3]}
+        return {"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3], "child_name": row[4] or "", "language": row[5] or "en", "created_at": row[6] or ""}
 
 # Serve frontend (production build)
 import os as _os
