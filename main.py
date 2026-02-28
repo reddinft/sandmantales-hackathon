@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 import aiosqlite
 import os
+from mistralai import Mistral
 
 app = FastAPI()
 
@@ -55,6 +56,48 @@ async def generate_story(story: StoryCreate):
         await db.commit()
         story_id = cursor.lastrowid
         return {**story.dict(), "id": story_id}
+
+@app.post("/api/story", response_model=Story)
+async def create_story_with_agent(prompt: str):
+    # Get API key from environment
+    api_key = os.environ.get("MISTRAL_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY environment variable not set")
+    
+    # Initialize Mistral client
+    client = Mistral(api_key=api_key)
+    
+    try:
+        # Call Mistral agent to generate story
+        response = client.beta.conversations.start(
+            agent_id='ag_019ca24f110677d7a92ec83a5c85704a',
+            inputs=prompt
+        )
+        
+        # Parse response
+        if not response.outputs or not response.outputs[0].content:
+            raise HTTPException(status_code=500, detail="No response from agent")
+        
+        story_content = response.outputs[0].content
+        
+        # Save to database
+        async with await get_db() as db:
+            cursor = await db.execute(
+                "INSERT INTO stories (title, content, voice_id) VALUES (?, ?, ?)",
+                (f"Generated Story: {prompt[:50]}", story_content, None)
+            )
+            await db.commit()
+            story_id = cursor.lastrowid
+        
+        return {
+            "id": story_id,
+            "title": f"Generated Story: {prompt[:50]}",
+            "content": story_content,
+            "voice_id": None
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating story: {str(e)}")
 
 @app.post("/api/voice/narrate")
 async def narrate_story(id: int):
