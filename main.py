@@ -201,3 +201,21 @@ async def get_story(id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Story not found")
         return {"id": row[0], "title": row[1], "content": row[2], "voice_id": row[3]}
+
+# Serve frontend (production build)
+import os as _os
+_frontend_dist = _os.path.join(_os.path.dirname(__file__), "frontend", "dist")
+if _os.path.exists(_frontend_dist):
+    from fastapi.staticfiles import StaticFiles as _SF2
+    from starlette.responses import FileResponse
+    
+    @app.get("/app/{path:path}")
+    async def serve_frontend(path: str):
+        file_path = _os.path.join(_frontend_dist, path)
+        if _os.path.exists(file_path) and _os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(_os.path.join(_frontend_dist, "index.html"))
+    
+    @app.get("/app")
+    async def serve_frontend_root():
+        return FileResponse(_os.path.join(_frontend_dist, "index.html"))

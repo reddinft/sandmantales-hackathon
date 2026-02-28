@@ -193,3 +193,28 @@ Doc
 
 _This log is maintained by Loki (OpenClaw agent) for Nissan Dookeran. Updated in real-time during the hackathon._
 _Last updated: 2026-02-28 18:05 AEST_
+
+#### 18:00–18:30 — Gemini Training Data + Tailscale Funnel
+
+**Training Data Pivot: FLUX → Gemini Nano Banana Pro**
+- Original plan: generate training images with FLUX itself (~3min/image, 60min total)
+- Problem: circular — training a model on its own output doesn't improve quality
+- **Pivot:** Use Gemini 3 Pro Image (Nano Banana Pro) for training data
+- Result: 20 images in ~3 minutes, 1K resolution, ~2MB each, professional storybook watercolor quality
+- **Blog angle:** "Two frontier models collaborating: Gemini provides the quality ceiling, FLUX becomes the private local inference engine"
+
+**LoRA Training Challenges**
+- FLUX.1-schnell full pipeline = ~18GB — doesn't fit alongside other services
+- Stopped Docker to free ~5GB RAM
+- First attempt: 401 on HF download — training venv didn't have HF_TOKEN → fixed with `huggingface_hub.login()`
+- Second attempt: OOM — 30.12GB allocated on MPS (entire unified memory of 24GB Mac Mini)
+- **Mitigation:** Lower rank (8→4), lower resolution (512→256), disable MPS watermark
+
+**Tailscale Funnel**
+- Nissan enabled via admin console link
+- Backend API: `https://nissans-mac-mini.tailc49510.ts.net/api/stories`
+- Frontend app: `https://nissans-mac-mini.tailc49510.ts.net/app`
+- Frontend API URLs made relative (works via Funnel or localhost)
+- Built frontend production bundle served by FastAPI at `/app/*`
+
+**Key lesson:** Fine-tuning FLUX on Apple Silicon 24GB is at the edge of feasibility. The 12B parameter model + LoRA + VAE + text encoders need careful memory management. Real production would need 48GB+ or cloud GPU.

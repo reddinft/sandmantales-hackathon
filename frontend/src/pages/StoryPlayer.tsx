@@ -22,7 +22,7 @@ export default function StoryPlayer() {
   useEffect(() => {
     const fetchStory = async () => {
       try {
-        const response = await fetch(`http://localhost:8001/api/stories/${id}`)
+        const response = await fetch(`/api/stories/${id}`)
         if (response.ok) {
           const data = await response.json()
           setTitle(data.title || 'Untitled Story')
@@ -49,7 +49,7 @@ export default function StoryPlayer() {
     if (!scenes[currentScene]?.text) return
     setIsPlaying(true)
     try {
-      const response = await fetch('http://localhost:8001/api/narrate', {
+      const response = await fetch('/api/narrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: scenes[currentScene].text, language: 'en' }),

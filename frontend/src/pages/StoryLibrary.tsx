@@ -18,7 +18,7 @@ export default function StoryLibrary() {
   useEffect(() => {
     const fetchStories = async () => {
       try {
-        const response = await fetch('http://localhost:8001/api/stories')
+        const response = await fetch('/api/stories')
         if (response.ok) {
           const data = await response.json()
           setStories(data)

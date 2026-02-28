@@ -13,7 +13,7 @@ export default function StoryCreator() {
     setLoading(true)
     
     try {
-      const response = await fetch('http://localhost:8001/api/story', {
+      const response = await fetch('/api/story', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
