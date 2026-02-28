@@ -6,17 +6,19 @@
 
 ## What it does
 
-Parents pick a language (English, Japanese, French, Hindi), describe their child's day, and Sandman Tales generates a personalized bedtime story with AI-narrated audio and locally-generated illustrations.
+Parents describe their child's day, pick a language (English, Japanese, French, Hindi), and Sandman Tales generates a personalized bedtime story with AI narration and illustrations.
 
-## Architecture
+## Stack
 
-- **Story Generation:** Mistral Large 3 via Agents + Conversations API
-- **Voice Narration:** ElevenLabs multilingual TTS
-- **Voice Input:** Voxtral (Mistral STT)
-- **Illustrations:** FLUX.1-schnell (local, via mflux on Apple Silicon)
-- **Backend:** FastAPI + SQLite + aiosqlite
-- **Frontend:** React + TypeScript + Tailwind CSS + Vite
-- **Code Generation:** Mistral Vibe CLI (devstral-2)
+| Layer | Tool |
+|-------|------|
+| **Story Generation** | Mistral Large 3 (Agents + Conversations API) |
+| **Code Generation** | Mistral Vibe CLI (devstral-2) |
+| **Voice Narration** | ElevenLabs multilingual TTS |
+| **Voice Input** | Voxtral (Mistral STT) |
+| **Illustrations** | FLUX.1-schnell (local, mflux on Apple Silicon) |
+| **Backend** | FastAPI + SQLite |
+| **Frontend** | React + TypeScript + Tailwind CSS + Vite |
 
 ## AI Agents (ClawCutters)
 
@@ -26,29 +28,6 @@ Parents pick a language (English, Japanese, French, Hindi), describe their child
 | **Pathfinder** | Story Generation | Samurai 🇯🇵 |
 | **Firefly** | Builder | Australian 🇦🇺 |
 | **Lifeline** | Voice & Audio | Kiwi 🇳🇿 |
-
-All agents powered by Mistral Agents API with unique personalities and conversation tracking.
-
-## Quick Start
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-MISTRAL_API_KEY=xxx ELEVENLABS_API_KEY=xxx uvicorn main:app --port 8001
-
-# Frontend
-npm install
-npm run dev
-```
-
-## Prizes Targeted
-
-- 🏆 Sydney 1st Place
-- 🎙️ Best Use of ElevenLabs
-- 🤖 Best Use of Agent Skills
-- 🔧 Best Vibe Usage
-- 🧪 Best Architectural Modification (W&B)
 
 ## License
 

@@ -5,7 +5,6 @@ node_modules/
 dist/
 .env
 .env.local
-backend/audio/
 *.mp3
 .vite/
-dist/
+.DS_Store
