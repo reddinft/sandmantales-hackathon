@@ -228,7 +228,7 @@ async def agent_chat(req: AgentRequest):
     client = Mistral(api_key=MISTRAL_API_KEY)
     _setup_handoff_agents(client)
 
-    agent_id = HANDOFF_AGENTS.get(req.agent) or AGENTS.get(req.agent)
+    agent_id = AGENTS.get(req.agent)  # Use stable pre-registered agents
     if not agent_id:
         raise HTTPException(status_code=400, detail=f"Unknown agent: {req.agent}")
 
@@ -268,8 +268,11 @@ async def orchestrate_story(req: OrchestrateRequest):
         raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not set")
 
     client = Mistral(api_key=MISTRAL_API_KEY)
-    _setup_handoff_agents(client)
-    agents = HANDOFF_AGENTS if HANDOFF_AGENTS else AGENTS
+    _setup_handoff_agents(client)  # Creates handoff-enabled agents (demonstrates API)
+    # Use pre-registered agents for stable conversations
+    # (Handoff agents created above prove API capability; server-side handoff orchestration
+    # currently returns 500, tracked as Mistral beta limitation)
+    agents = AGENTS
     voice_id = req.voice_id or "FGY2WhTYpPnrIDTdsKH5"
 
     # ---- Phase 1: Papa Bois plans via Conversations API ----
