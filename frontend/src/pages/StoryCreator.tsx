@@ -16,7 +16,7 @@ const StoryCreator = () => {
   const [progressText, setProgressText] = useState('');
   const [steps, setSteps] = useState<Record<string, PipelineStep>>({
     ogma: 'idle', cache: 'idle', papabois: 'idle', guardrail: 'idle',
-    anansi: 'idle', devi_tts: 'idle', devi_sfx: 'idle', devi_music: 'idle',
+    anansi: 'idle', anansi_img: 'idle', devi_tts: 'idle', devi_sfx: 'idle', devi_music: 'idle',
     firefly: 'idle'
   });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -128,7 +128,7 @@ const StoryCreator = () => {
       // Step 7: Devi Music
       setProgressText('🙏 Devi: Composing lullaby via ElevenLabs Music...');
       await sleep(1000);
-      setSteps(s => ({ ...s, devi_music: 'complete', firefly: 'active' }));
+      setSteps(s => ({ ...s, anansi_img: 'complete', devi_music: 'complete', firefly: 'active' }));
 
       // Step 8: Firefly assembly
       setProgressText('🦆 Firefly: Stitching scenes + audio + images into storybook...');
@@ -310,13 +310,14 @@ const StoryCreator = () => {
                 <Arrow from="guardrail" to="anansi" />
 
                 {/* Row 5: Anansi */}
-                <Node id="anansi" icon="🕷️" label="Anansi — Story Generator" sub="Mistral Agent ag_019ca24f... generates multilingual scenes" />
+                <Node id="anansi" icon="🕷️" label="Anansi — Story + Illustrations" sub="Mistral Agent ag_019ca24f... generates scenes + crafts illustration prompts" />
 
-                {/* Row 6: Three parallel Devi outputs */}
+                {/* Row 6: Anansi illustrations + Devi audio (parallel) */}
                 <div className="flex items-center justify-center py-0.5">
                   <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${steps.anansi === 'complete' ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
+                  <Node id="anansi_img" icon="🎨" label="Anansi — Illustrations" sub="Crafts art prompts via Mistral → Gemini image gen" />
                   <Node id="devi_tts" icon="🎙️" label="Devi — TTS" sub="ElevenLabs Multilingual v2 narration" />
                   <Node id="devi_sfx" icon="🌊" label="Devi — SFX" sub="ElevenLabs Sound Generation" />
                   <Node id="devi_music" icon="🎵" label="Devi — Music" sub="ElevenLabs Lullaby Compose" />
@@ -324,9 +325,9 @@ const StoryCreator = () => {
 
                 {/* Row 7: Firefly stitching */}
                 <div className="flex items-center justify-center py-0.5">
-                  <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${(steps.devi_tts === 'complete' && steps.devi_sfx === 'complete' && steps.devi_music === 'complete') ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
+                  <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${(steps.anansi_img === 'complete' && steps.devi_tts === 'complete' && steps.devi_sfx === 'complete' && steps.devi_music === 'complete') ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
                 </div>
-                <Node id="firefly" icon="🦆" label="Firefly — Storybook Assembly" sub="Stitches scenes + narration + SFX + music → playable storybook" />
+                <Node id="firefly" icon="🦆" label="Firefly — Storybook Assembly" sub="Stitches scenes + narration + SFX + illustrations → playable storybook" />
               </div>
 
               {/* Progress */}

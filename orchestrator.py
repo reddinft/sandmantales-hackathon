@@ -365,18 +365,49 @@ Return ONLY valid JSON: {{"title": "...", "scenes": ["s1","s2","s3","s4"], "mood
     else:
         print(f"[DEVI LULLABY] ❌ {lull.get('error')}")
 
-    # ---- Phase 3.5: Generate illustrations via Gemini ----
+    # ---- Phase 3.5: Anansi crafts illustration prompts + generates images ----
     image_cache = {}
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     if gemini_key and scenes:
         import httpx as hx
-        print(f"[ILLUSTRATIONS] Generating {len(scenes)} scene images...")
-        for i, scene_text in enumerate(scenes[:4]):
+        print(f"[ANANSI ILLUSTRATIONS] Crafting prompts for {len(scenes)} scenes...")
+
+        # Anansi uses Mistral to craft the perfect illustration prompt for each scene
+        scene_descriptions = "\n".join([f"Scene {i}: {s[:200]}" for i, s in enumerate(scenes[:4])])
+        anansi_img_prompt = f"""You are Anansi, master storyteller. For each scene of this {req.language} bedtime story for {req.child_name}, craft a detailed illustration prompt.
+
+Story title: {story.get('title', 'Untitled')}
+Mood: {story.get('mood', 'magical')}
+
+{scene_descriptions}
+
+Return a JSON object with keys "scene_0", "scene_1", etc. Each value is a detailed art prompt (50-80 words) describing the illustration in dreamy watercolor children's book style. Include: characters, setting, lighting, mood, colors. Style: soft pastels, magical atmosphere, Studio Ghibli inspired.
+
+Return ONLY valid JSON, no markdown."""
+
+        try:
+            img_prompt_response = client.chat.complete(
+                model="mistral-large-latest",
+                messages=[
+                    {"role": "system", "content": "You are Anansi the storyteller. Craft vivid illustration prompts for children's storybook scenes."},
+                    {"role": "user", "content": anansi_img_prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            img_prompts_raw = img_prompt_response.choices[0].message.content.strip()
+            img_prompts = json.loads(img_prompts_raw)
+            print(f"[ANANSI] Crafted {len(img_prompts)} illustration prompts via Mistral Large")
+        except Exception as e:
+            print(f"[ANANSI] Prompt crafting failed ({e}), using scene text directly")
+            img_prompts = {f"scene_{i}": f"Dreamy watercolor children's book illustration: {s[:150]}. Soft pastels, magical, Studio Ghibli inspired" for i, s in enumerate(scenes[:4])}
+
+        # Generate images using Anansi's crafted prompts
+        for i in range(min(len(scenes), 4)):
+            art_prompt = img_prompts.get(f"scene_{i}", f"Dreamy watercolor: {scenes[i][:100]}")
             try:
-                prompt = f"Dreamy watercolor children's book illustration for a bedtime story scene: {scene_text[:150]}. Soft pastels, magical atmosphere, warm and cozy, Studio Ghibli inspired"
                 resp = hx.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_key}",
-                    json={"contents": [{"parts": [{"text": prompt}]}],
+                    json={"contents": [{"parts": [{"text": art_prompt}]}],
                           "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}},
                     timeout=60
                 )
@@ -385,12 +416,12 @@ Return ONLY valid JSON: {{"title": "...", "scenes": ["s1","s2","s3","s4"], "mood
                     for part in data.get("candidates", [{}])[0].get("content", {}).get("parts", []):
                         if "inlineData" in part:
                             image_cache[f"img_{i}"] = part["inlineData"]["data"]
-                            print(f"[ILLUSTRATION {i}] ✅")
+                            print(f"[ANANSI ILLUSTRATION {i}] ✅")
                             break
                 else:
-                    print(f"[ILLUSTRATION {i}] ❌ {resp.status_code}")
+                    print(f"[ANANSI ILLUSTRATION {i}] ❌ {resp.status_code}")
             except Exception as e:
-                print(f"[ILLUSTRATION {i}] ❌ {e}")
+                print(f"[ANANSI ILLUSTRATION {i}] ❌ {e}")
 
     # ---- Phase 4: Save to Turso ----
     import database as db_mod
