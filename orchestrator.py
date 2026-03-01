@@ -365,14 +365,42 @@ Return ONLY valid JSON: {{"title": "...", "scenes": ["s1","s2","s3","s4"], "mood
     else:
         print(f"[DEVI LULLABY] ❌ {lull.get('error')}")
 
+    # ---- Phase 3.5: Generate illustrations via Gemini ----
+    image_cache = {}
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if gemini_key and scenes:
+        import httpx as hx
+        print(f"[ILLUSTRATIONS] Generating {len(scenes)} scene images...")
+        for i, scene_text in enumerate(scenes[:4]):
+            try:
+                prompt = f"Dreamy watercolor children's book illustration for a bedtime story scene: {scene_text[:150]}. Soft pastels, magical atmosphere, warm and cozy, Studio Ghibli inspired"
+                resp = hx.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_key}",
+                    json={"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}},
+                    timeout=60
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for part in data.get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                        if "inlineData" in part:
+                            image_cache[f"img_{i}"] = part["inlineData"]["data"]
+                            print(f"[ILLUSTRATION {i}] ✅")
+                            break
+                else:
+                    print(f"[ILLUSTRATION {i}] ❌ {resp.status_code}")
+            except Exception as e:
+                print(f"[ILLUSTRATION {i}] ❌ {e}")
+
     # ---- Phase 4: Save to Turso ----
     import database as db_mod
     content_json = json.dumps(story, ensure_ascii=False)
     audio_json = json.dumps(audio_cache) if audio_cache else "{}"
+    image_json = json.dumps(image_cache) if image_cache else "{}"
 
     await db_mod.execute(
-        "INSERT INTO stories (title, content, voice_id, child_name, language, audio_cache) VALUES (?, ?, ?, ?, ?, ?)",
-        [story.get("title", "Untitled"), content_json, voice_id, req.child_name, req.language, audio_json]
+        "INSERT INTO stories (title, content, voice_id, child_name, language, audio_cache, image_cache) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [story.get("title", "Untitled"), content_json, voice_id, req.child_name, req.language, audio_json, image_json]
     )
     id_result = await db_mod.execute("SELECT MAX(id) FROM stories", [])
     story_id = id_result.rows[0][0] if id_result.rows else 1
