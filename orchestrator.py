@@ -300,12 +300,29 @@ Mood: {plan.get('mood', 'magical')}
 Write exactly 4 scenes (2-3 sentences each). Last scene: child falls asleep.
 Return ONLY valid JSON: {{"title": "...", "scenes": ["s1","s2","s3","s4"], "mood": "..."}}"""
 
-    anansi_response = client.beta.conversations.start(
+    # Anansi generates story via Mistral Large + JSON mode
+    # (Conversations API returns 0 chars for pre-registered agent; using chat.complete
+    # with response_format for reliable structured output)
+    anansi_conv_response = client.beta.conversations.start(
         agent_id=agents["anansi"], inputs=anansi_prompt
     )
-    anansi_conv_id = anansi_response.conversation_id
-    anansi_text = _extract_text(anansi_response)
+    anansi_conv_id = anansi_conv_response.conversation_id
+    anansi_text = _extract_text(anansi_conv_response)
     print(f"[ANANSI] conv={anansi_conv_id} text={len(anansi_text)}c")
+    
+    # If Conversations API returned empty, use chat.complete with JSON mode
+    if not anansi_text or len(anansi_text) < 20:
+        print("[ANANSI] Conversations empty, using chat.complete + JSON mode")
+        anansi_chat = client.chat.complete(
+            model="mistral-large-latest",
+            messages=[
+                {"role": "system", "content": "You are Anansi, master storyteller from Caribbean folklore. Create magical bedtime stories. Return ONLY valid JSON."},
+                {"role": "user", "content": anansi_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        anansi_text = anansi_chat.choices[0].message.content.strip()
+        print(f"[ANANSI] chat.complete: {len(anansi_text)}c")
 
     try:
         clean = anansi_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
