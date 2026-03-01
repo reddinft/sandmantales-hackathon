@@ -234,7 +234,7 @@ async def get_stories():
 
 @app.get("/api/stories/{id}")
 async def get_story(id: int):
-    rs = await db.execute("SELECT id, title, content, voice_id, child_name, language, created_at, audio_cache FROM stories WHERE id = ?", [id])
+    rs = await db.execute("SELECT id, title, content, voice_id, child_name, language, created_at, audio_cache, image_cache FROM stories WHERE id = ?", [id])
     if not rs.rows:
         raise HTTPException(status_code=404, detail="Story not found")
     r = rs.rows[0]
@@ -261,10 +261,19 @@ async def get_story(id: int):
         has_audio = {k: True for k in audio_map.keys()} if audio_map else {}
     except:
         pass
+    # Parse image_cache (column may not exist yet)
+    has_images = {}
+    try:
+        img_raw = r[8] if len(r) > 8 else None
+        if img_raw:
+            img_map = json.loads(img_raw)
+            has_images = {k: True for k in img_map.keys()} if img_map else {}
+    except:
+        pass
     return {
         "id": r[0], "title": r[1], "scenes": scenes, "mood": mood,
         "voice_id": r[3], "child_name": r[4] or "", "language": r[5] or "en",
-        "created_at": r[6] or "", "has_audio": has_audio
+        "created_at": r[6] or "", "has_audio": has_audio, "has_images": has_images
     }
 
 # Serve frontend

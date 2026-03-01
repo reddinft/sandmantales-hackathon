@@ -175,6 +175,16 @@ const StoryPlayer: React.FC = () => {
           )}
 
           <div className="bg-slate-700/30 rounded-2xl p-6 mb-6 min-h-[200px]">
+            {story.has_images?.[`img_${currentSceneIndex}`] && (
+              <div className="mb-4 rounded-xl overflow-hidden shadow-lg">
+                <img 
+                  src={`${API}/api/stories/${id}/image/${currentSceneIndex}`}
+                  alt={`Scene ${currentSceneIndex + 1} illustration`}
+                  className="w-full h-auto max-h-[400px] object-cover"
+                  loading="lazy"
+                />
+              </div>
+            )}
             <p className="text-amber-50 text-lg leading-relaxed">{scene}</p>
           </div>
 

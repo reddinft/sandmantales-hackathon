@@ -3,6 +3,7 @@ Story pipeline — Anansi (story gen), Ogma (dual-STT), Devi (narration).
 Wires the demo flow: voice input → story → narration → playback.
 """
 import os
+import base64
 import json
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -173,21 +174,28 @@ async def list_stories():
 
 @router.get("/api/stories/{story_id}")
 async def get_story(story_id: int):
-    rs = await db.execute("SELECT id, title, content, voice_id, child_name, language, created_at, audio_cache FROM stories WHERE id = ?", [story_id])
+    rs = await db.execute("SELECT id, title, content, voice_id, child_name, language, created_at, audio_cache, image_cache FROM stories WHERE id = ?", [story_id])
     if not rs.rows:
         raise HTTPException(status_code=404, detail="Story not found")
     r = rs.rows[0]
     content = json.loads(r[2]) if r[2] else {}
+    scenes = content.get("scenes", [])
+    scenes = [s.get("text", str(s)) if isinstance(s, dict) else str(s) for s in scenes]
     audio_cache = {}
     if len(r) > 7 and r[7]:
         try:
             audio_cache = {k: True for k in json.loads(r[7]).keys()}
         except: pass
+    image_cache = {}
+    if len(r) > 8 and r[8]:
+        try:
+            image_cache = {k: True for k in json.loads(r[8]).keys()}
+        except: pass
     return {
-        "id": r[0], "title": r[1], "scenes": content.get("scenes", []),
+        "id": r[0], "title": r[1], "scenes": scenes,
         "mood": content.get("mood", "magical"), "voice_id": r[3],
         "child_name": r[4], "language": r[5], "created_at": r[6],
-        "has_audio": audio_cache
+        "has_audio": audio_cache, "has_images": image_cache
     }
 
 # --- Devi: Narration (ElevenLabs TTS) ---
@@ -224,3 +232,17 @@ async def get_cached_audio(story_id: int, scene_index: str):
         raise HTTPException(status_code=404, detail=f"No audio for scene {scene_index}")
     audio_bytes = base64.b64decode(audio_b64)
     return StreamingResponse(iter([audio_bytes]), media_type="audio/mpeg")
+
+
+@router.get("/api/stories/{story_id}/image/{scene_key}")
+async def get_story_image(story_id: int, scene_key: str):
+    """Serve cached scene illustration as PNG."""
+    rs = await db.execute("SELECT image_cache FROM stories WHERE id = ?", [story_id])
+    if not rs.rows or not rs.rows[0][0]:
+        raise HTTPException(status_code=404, detail="No images")
+    cache = json.loads(rs.rows[0][0])
+    key = f"img_{scene_key}" if not scene_key.startswith("img_") else scene_key
+    if key not in cache:
+        raise HTTPException(status_code=404, detail=f"Image {key} not found")
+    from starlette.responses import Response
+    return Response(content=base64.b64decode(cache[key]), media_type="image/png")
