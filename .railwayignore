@@ -16,3 +16,11 @@ __pycache__
 stories.db
 .vibe
 .git
+static/illustrations
+demo_screenshots
+frontend/public/illustrations
+frontend/dist/illustrations
+pitch_deck.html
+comparisons
+training_images_imagen
+*.png
