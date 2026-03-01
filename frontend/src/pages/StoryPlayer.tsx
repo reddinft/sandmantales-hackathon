@@ -10,11 +10,41 @@ const StoryPlayer: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [sfxPlaying, setSfxPlaying] = useState(false);
   const [autoPlaying, setAutoPlaying] = useState(false);
+  const [activeSentence, setActiveSentence] = useState(-1);
+  const [showCaptions, setShowCaptions] = useState(true);
+  const sentenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sfxRef = useRef<HTMLAudioElement>(null);
   const lullabyRef = useRef<HTMLAudioElement>(null);
   const stopRef = useRef(false);
   const API = import.meta.env.VITE_API_URL || '';
+
+  const splitSentences = (text: string): string[] => {
+    return text.match(/[^.!?]+[.!?'\u201D\u00BB\u300D\uFF09]+|[^.!?]+$/g)?.map(s => s.trim()).filter(Boolean) || [text];
+  };
+
+  const startCaptionSync = (text: string, audioDuration: number) => {
+    if (sentenceTimerRef.current) clearInterval(sentenceTimerRef.current);
+    const sentences = splitSentences(text);
+    if (sentences.length === 0) return;
+    const timePerSentence = (audioDuration * 1000) / sentences.length;
+    let idx = 0;
+    setActiveSentence(0);
+    sentenceTimerRef.current = setInterval(() => {
+      idx++;
+      if (idx >= sentences.length) {
+        if (sentenceTimerRef.current) clearInterval(sentenceTimerRef.current);
+        setActiveSentence(-1);
+        return;
+      }
+      setActiveSentence(idx);
+    }, timePerSentence);
+  };
+
+  const stopCaptionSync = () => {
+    if (sentenceTimerRef.current) clearInterval(sentenceTimerRef.current);
+    setActiveSentence(-1);
+  };
 
   useEffect(() => {
     fetch(`${API}/api/stories/${id}`)
@@ -62,6 +92,11 @@ const StoryPlayer: React.FC = () => {
     const url = await fetchAudio(String(currentSceneIndex));
     if (url && audioRef.current) {
       audioRef.current.src = url;
+      audioRef.current.onloadedmetadata = () => {
+        if (audioRef.current && showCaptions) {
+          startCaptionSync(story.scenes[currentSceneIndex], audioRef.current.duration);
+        }
+      };
       audioRef.current.play();
       setIsPlaying(true);
       setIsPaused(false);
@@ -80,6 +115,7 @@ const StoryPlayer: React.FC = () => {
   const handleStop = () => {
     stopRef.current = true;
     setAutoPlaying(false);
+    stopCaptionSync();
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
     if (sfxRef.current) { sfxRef.current.pause(); sfxRef.current.currentTime = 0; }
     if (lullabyRef.current) { lullabyRef.current.pause(); lullabyRef.current.currentTime = 0; }
@@ -145,7 +181,12 @@ const StoryPlayer: React.FC = () => {
         setIsPlaying(true);
         setIsLoading(false);
         await new Promise<void>(resolve => {
-          audioRef.current!.onended = () => resolve();
+          audioRef.current!.onloadedmetadata = () => {
+            if (audioRef.current && showCaptions) {
+              startCaptionSync(story.scenes[i], audioRef.current.duration);
+            }
+          };
+          audioRef.current!.onended = () => { stopCaptionSync(); resolve(); };
           audioRef.current!.play();
         });
         if (stopRef.current) break;
@@ -205,6 +246,10 @@ const StoryPlayer: React.FC = () => {
                 className={`px-4 py-1.5 rounded-lg text-sm transition-all ${sfxPlaying ? 'bg-purple-500/50 text-purple-100' : 'bg-slate-700/50 text-amber-200/60 hover:bg-slate-700'}`}>
                 {sfxPlaying ? '🔊 Ambient ON' : '🔇 Ambient OFF'}
               </button>
+              <button onClick={() => setShowCaptions(!showCaptions)}
+                className={`px-4 py-1.5 rounded-lg text-sm transition-all ${showCaptions ? 'bg-amber-500/50 text-amber-100' : 'bg-slate-700/50 text-amber-200/60 hover:bg-slate-700'}`}>
+                {showCaptions ? '📖 CC ON' : '📖 CC OFF'}
+              </button>
               <div className="flex items-center gap-2 text-amber-200/40 text-xs">
                 <span>🎙️ Narration 100%</span> · <span>🌊 SFX 30%</span> · <span>🎵 Lullaby 20%</span>
               </div>
@@ -222,7 +267,26 @@ const StoryPlayer: React.FC = () => {
                 />
               </div>
             )}
-            <p className="text-amber-50 text-lg leading-relaxed">{scene}</p>
+            <div className="relative">
+              {showCaptions && activeSentence >= 0 && (
+                <div className="mb-3 p-3 bg-black/40 backdrop-blur rounded-xl border border-amber-400/30">
+                  <p className="text-amber-100 text-lg font-medium text-center leading-relaxed">
+                    📖 {splitSentences(scene)[activeSentence] || ''}
+                  </p>
+                </div>
+              )}
+              <p className="text-amber-50 text-lg leading-relaxed">
+                {splitSentences(scene).map((s, idx) => (
+                  <span key={idx} className={`transition-all duration-300 ${
+                    activeSentence === idx
+                      ? 'text-amber-300 font-semibold bg-amber-400/10 rounded px-0.5'
+                      : activeSentence >= 0 && activeSentence !== idx
+                      ? 'text-amber-50/40'
+                      : ''
+                  }`}>{s}{' '}</span>
+                ))}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -271,7 +335,7 @@ const StoryPlayer: React.FC = () => {
           </div>
         </div>
       </div>
-      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); setIsPaused(false); }} />
+      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); setIsPaused(false); stopCaptionSync(); }} />
       <audio ref={sfxRef} />
       <audio ref={lullabyRef} />
     </div>
