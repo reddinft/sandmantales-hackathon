@@ -2,3 +2,8 @@ fastapi
 uvicorn
 aiosqlite
 pydantic
+libsql_client
+mistralai
+httpx
+websockets
+python-multipart

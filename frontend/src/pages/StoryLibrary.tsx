@@ -1,113 +1,60 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
-type Story = {
-  id: string;
-  title: string;
-  child_name: string;
-  language: string;
-  created_at: string | null;
-};
-
-const languageFlags: Record<string, string> = {
-  en: '🇬🇧',
-  ja: '🇯🇵',
-  fr: '🇫🇷',
-  hi: '🇮🇳',
-  es: '🇪🇸',
-  pt: '🇧🇷',
-  de: '🇩🇪',
-  zh: '🇨🇳',
-  ar: '🇸🇦',
-  ko: '🇰🇷',
-};
-
-export default function StoryLibrary() {
-  const [stories, setStories] = useState<Story[]>([]);
-  const [loading, setLoading] = useState(true);
+const StoryLibrary = () => {
+  const [stories, setStories] = useState<any[]>([]);
+  const API = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
-    const fetchStories = async () => {
-      try {
-        const response = await fetch('/api/stories');
-        const data = await response.json();
-        setStories(data);
-      } catch (error) {
-        console.error('Failed to fetch stories:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStories();
+    fetch(`${API}/api/stories`)
+      .then(r => r.json())
+      .then(setStories)
+      .catch(console.error);
   }, []);
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Today';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-indigo-900 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[url('/stars.png')] opacity-20"></div>
-      <div className="relative z-10 container mx-auto px-4 py-12">
-        <header className="flex justify-between items-center mb-12">
-          <h1 className="text-4xl font-bold text-amber-100 flex items-center gap-3">
-            <span>📚</span>
-            Story Library
-            <span className="text-2xl font-normal text-amber-200/80">
-              ({stories.length})
-            </span>
-          </h1>
-          <a
-            href="/"
-            className="bg-amber-500 hover:bg-amber-400 text-white font-semibold py-2 px-6 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-amber-300/50"
-          >
-            + New Story
-          </a>
-        </header>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-900 relative overflow-hidden">
+      <style>{`
+        @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+        .star { position: absolute; background: white; border-radius: 50%; animation: twinkle 3s infinite ease-in-out; }
+        .star-1 { width: 2px; height: 2px; top: 10%; left: 20%; }
+        .star-2 { width: 3px; height: 3px; top: 20%; left: 80%; animation-delay: 0.5s; }
+        .star-3 { width: 1px; height: 1px; top: 60%; left: 10%; animation-delay: 1s; }
+      `}</style>
+      <div className="star star-1"/><div className="star star-2"/><div className="star star-3"/>
 
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-400"></div>
+      <div className="container mx-auto px-4 py-8 relative z-10">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-amber-100">📚 Story Library</h1>
+          <Link to="/" className="px-4 py-2 rounded-xl bg-amber-500/80 text-white hover:bg-amber-500 transition-all">
+            + New Story
+          </Link>
+        </div>
+
+        {stories.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-amber-200/60 text-xl">No stories yet — create your first one!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {stories.map((story) => (
-              <a
-                key={story.id}
-                href={`/story/${story.id}`}
-                className="block transform transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl"
-              >
-                <div className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-amber-200/30 group cursor-pointer h-full flex flex-col justify-between relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-amber-50/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="text-2xl">
-                        {languageFlags[story.language] || '🌍'}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(story.created_at)}
-                      </span>
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">
-                      {story.title}
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      For <span className="font-semibold">{story.child_name}</span>
-                    </p>
-                  </div>
-                  <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-amber-100/30 rounded-full group-hover:bg-amber-200/40 transition-all duration-300"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {stories.map(s => (
+              <Link key={s.id} to={`/story/${s.id}`}
+                className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-amber-200/20 hover:border-amber-200/50 transition-all hover:scale-[1.02]"
+                style={{boxShadow: '0 0 10px rgba(245,158,11,0.2)'}}>
+                <h2 className="text-xl font-bold text-amber-100 mb-2">{s.title}</h2>
+                <div className="flex gap-2 text-sm text-amber-200/60">
+                  <span>👤 {s.child_name}</span>
+                  <span>·</span>
+                  <span>🌐 {s.language?.toUpperCase()}</span>
                 </div>
-              </a>
+                <p className="text-amber-200/40 text-xs mt-2">{s.created_at}</p>
+              </Link>
             ))}
           </div>
         )}
       </div>
     </div>
   );
-}
+};
+
+export default StoryLibrary;

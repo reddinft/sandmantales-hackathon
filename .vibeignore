@@ -1,0 +1,21 @@
+# Exclude heavy directories from Vibe context
+node_modules/
+frontend/node_modules/
+frontend/dist/
+lora_weights/
+training_data/
+training_images_imagen/
+training_captions/
+comparisons/
+demo_video/
+demo_audio/
+demo_images/
+finetune/
+*.png
+*.mp4
+*.safetensors
+*.bin
+*.pkl
+__pycache__/
+.conversations.json
+stories.db

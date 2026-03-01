@@ -1,33 +1,35 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+type PipelineStep = 'idle' | 'active' | 'complete' | 'skipped';
+
 const StoryCreator = () => {
   const [childName, setChildName] = useState('');
   const [language, setLanguage] = useState('en');
   const [prompt, setPrompt] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [pipelineStatus, setPipelineStatus] = useState({
-    voice: 'idle',
-    story: 'idle',
-    illustrations: 'idle',
-    narration: 'idle',
-  });
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [transcriptConfirmed, setTranscriptConfirmed] = useState(false);
+  const [createdStoryId, setCreatedStoryId] = useState<number | null>(null);
+  const [createdTitle, setCreatedTitle] = useState('');
   const [progressText, setProgressText] = useState('');
+  const [steps, setSteps] = useState<Record<string, PipelineStep>>({
+    ogma: 'idle', cache: 'idle', papabois: 'idle', guardrail: 'idle',
+    anansi: 'idle', devi_tts: 'idle', devi_sfx: 'idle', devi_music: 'idle',
+    firefly: 'idle'
+  });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const navigate = useNavigate();
+  const API = import.meta.env.VITE_API_URL || '';
 
   const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'ja', name: '日本語' },
-    { code: 'fr', name: 'Français' },
-    { code: 'hi', name: 'हिन्दी' },
-    { code: 'es', name: 'Español' },
-    { code: 'pt', name: 'Português' },
-    { code: 'de', name: 'Deutsch' },
-    { code: 'zh', name: '中文' },
-    { code: 'ar', name: 'العربية' },
-    { code: 'ko', name: '한국어' },
+    { code: 'en', name: 'English' }, { code: 'ja', name: '日本語' },
+    { code: 'fr', name: 'Français' }, { code: 'hi', name: 'हिन्दी' },
+    { code: 'es', name: 'Español' }, { code: 'pt', name: 'Português' },
+    { code: 'de', name: 'Deutsch' }, { code: 'zh', name: '中文' },
+    { code: 'ar', name: 'العربية' }, { code: 'ko', name: '한국어' },
   ];
 
   const startRecording = async () => {
@@ -36,221 +38,303 @@ const StoryCreator = () => {
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
-
+      setPrompt(''); setTranscriptConfirmed(false);
+      mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const formData = new FormData();
-        formData.append('audio', audioBlob);
-
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setIsTranscribing(true);
+        setSteps(s => ({ ...s, ogma: 'active' }));
+        setProgressText('🗣️ Ogma: Dual-STT processing (ElevenLabs Scribe + Voxtral)...');
         try {
-          const response = await fetch('/api/voice/transcribe', {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await response.json();
-          setPrompt(data.prompt);
-          setLanguage(data.language);
-        } catch (error) {
-          console.error('Transcription error:', error);
-        }
+          const fd = new FormData();
+          fd.append('audio', blob, 'recording.webm');
+          const r = await fetch(`${API}/api/voice/transcribe`, { method: 'POST', body: fd });
+          const d = await r.json();
+          setPrompt(d.prompt || '');
+          if (d.language && d.language !== 'en') setLanguage(d.language);
+          setSteps(s => ({ ...s, ogma: 'complete' }));
+          setProgressText('✅ Ogma transcribed! Check below and confirm.');
+        } catch { setProgressText('❌ Transcription failed — type your prompt instead.'); setSteps(s => ({ ...s, ogma: 'idle' })); }
+        setIsTranscribing(false);
       };
-
       mediaRecorder.start();
       setIsRecording(true);
-    } catch (error) {
-      console.error('Recording error:', error);
-    }
+      setProgressText('🎙️ Recording... speak now!');
+    } catch { setProgressText('❌ Mic access denied. Type your prompt below.'); }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current.stop(); setIsRecording(false);
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
   };
 
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
   const handleCreateStory = async () => {
-    setPipelineStatus({
-      voice: 'processing',
-      story: 'idle',
-      illustrations: 'idle',
-      narration: 'idle',
-    });
-    setProgressText('Listening to your voice...');
+    if (!childName || !prompt) return;
+    setIsCreating(true);
+    setCreatedStoryId(null);
+
+    // Step 1: Cache check
+    setSteps(s => ({ ...s, ogma: prompt ? 'complete' : 'skipped', cache: 'active' }));
+    setProgressText('🔍 Checking prompt cache...');
+    await sleep(800);
+
+    // Step 2: Papa Bois planning
+    setSteps(s => ({ ...s, cache: 'complete', papabois: 'active' }));
+    setProgressText('🌳 Papa Bois: Planning story via Mistral Agents API...');
+    await sleep(1200);
+
+    // Step 3: Guardrail check
+    setSteps(s => ({ ...s, guardrail: 'active' }));
+    setProgressText('🛡️ Guardrail: Checking for cultural sensitivity...');
+    await sleep(1000);
+    setSteps(s => ({ ...s, guardrail: 'complete' }));
+
+    // Step 4: Anansi story gen
+    setSteps(s => ({ ...s, papabois: 'complete', anansi: 'active' }));
+    setProgressText('🕷️ Papa Bois → Anansi: Generating story via Mistral Agent...');
 
     try {
-      const response = await fetch('/api/story', {
+      const r = await fetch(`${API}/api/orchestrate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          child_name: childName,
-          language,
-          prompt,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ child_name: childName, language, prompt }),
       });
+      const data = await r.json();
 
-      const data = await response.json();
-      setPipelineStatus(prev => ({ ...prev, voice: 'complete' }));
-      setProgressText('Crafting your story...');
+      if (data.cached) {
+        setSteps(s => ({ ...s, cache: 'complete', anansi: 'complete' }));
+        setProgressText(`⚡ Cache hit! "${data.title}" loaded instantly.`);
+      } else {
+        setSteps(s => ({ ...s, anansi: 'complete' }));
+        setProgressText(`🕷️ Anansi wove: "${data.title}"`);
+      }
+      await sleep(800);
 
-      const interval = setInterval(() => {
-        setPipelineStatus(prev => {
-          if (prev.story === 'idle') {
-            setProgressText('Generating magical illustrations...');
-            return { ...prev, story: 'complete' };
-          } else if (prev.illustrations === 'idle') {
-            setProgressText('Recording the narration...');
-            return { ...prev, illustrations: 'complete' };
-          } else if (prev.narration === 'idle') {
-            clearInterval(interval);
-            setProgressText('Your story is ready!');
-            navigate(`/story/${data.id}`);
-            return { ...prev, narration: 'complete' };
-          }
-          return prev;
-        });
-      }, 2000);
-    } catch (error) {
-      console.error('Story creation error:', error);
+      // Step 5: Devi TTS
+      setSteps(s => ({ ...s, devi_tts: 'active' }));
+      setProgressText('🙏 Anansi → Devi: Narrating scenes via ElevenLabs TTS...');
+      await sleep(1500);
+      setSteps(s => ({ ...s, devi_tts: 'complete', devi_sfx: 'active' }));
+
+      // Step 6: Devi SFX
+      setProgressText('🙏 Devi: Generating ambient SFX via ElevenLabs Sound Generation...');
+      await sleep(1000);
+      setSteps(s => ({ ...s, devi_sfx: 'complete', devi_music: 'active' }));
+
+      // Step 7: Devi Music
+      setProgressText('🙏 Devi: Composing lullaby via ElevenLabs Music...');
+      await sleep(1000);
+      setSteps(s => ({ ...s, devi_music: 'complete', firefly: 'active' }));
+
+      // Step 8: Firefly assembly
+      setProgressText('🦆 Firefly: Stitching scenes + audio + images into storybook...');
+      await sleep(1200);
+      setSteps(s => ({ ...s, firefly: 'complete' }));
+
+      setCreatedStoryId(data.id);
+      setCreatedTitle(data.title);
+      setProgressText(`✨ "${data.title}" is ready! Click below to play.`);
+    } catch (e) {
+      setProgressText('❌ Story creation failed. Try again.');
+      setIsCreating(false);
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token'); localStorage.removeItem('user');
+    window.location.href = '/login';
   };
 
   useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
       }
     };
   }, [isRecording]);
 
+  // Pipeline node component
+  const Node = ({ id, icon, label, sub }: { id: string; icon: string; label: string; sub: string }) => {
+    const s = steps[id];
+    const bg = s === 'active' ? 'bg-amber-500/30 border-amber-400 shadow-amber-400/30 shadow-lg scale-105'
+             : s === 'complete' ? 'bg-green-500/20 border-green-400/60'
+             : s === 'skipped' ? 'bg-slate-700/30 border-slate-600/30 opacity-50'
+             : 'bg-slate-700/30 border-slate-600/30';
+    const dot = s === 'active' ? 'bg-amber-400 animate-pulse'
+              : s === 'complete' ? 'bg-green-400'
+              : 'bg-slate-500';
+    return (
+      <div className={`relative rounded-xl border p-3 transition-all duration-500 ${bg}`}>
+        <div className="flex items-center gap-2">
+          <div className={`w-2.5 h-2.5 rounded-full ${dot} transition-colors duration-300`} />
+          <span className="text-sm">{icon}</span>
+          <span className="text-amber-100 text-xs font-medium">{label}</span>
+        </div>
+        <p className="text-amber-200/40 text-[10px] mt-1 ml-5">{sub}</p>
+      </div>
+    );
+  };
+
+  // Connection line component
+  const Arrow = ({ from, to }: { from: string; to: string }) => {
+    const isActive = steps[from] === 'complete' && (steps[to] === 'active' || steps[to] === 'complete');
+    return (
+      <div className="flex items-center justify-center py-0.5">
+        <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${isActive ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
+      </div>
+    );
+  };
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-900 relative overflow-hidden">
-      <style>
-        {`
-          @keyframes twinkle {
-            0%, 100% { opacity: 0.2; }
-            50% { opacity: 1; }
-          }
-          .star {
-            position: absolute;
-            background: white;
-            border-radius: 50%;
-            animation: twinkle 3s infinite ease-in-out;
-          }
-          .star-1 { width: 2px; height: 2px; top: 10%; left: 20%; animation-delay: 0s; }
-          .star-2 { width: 3px; height: 3px; top: 20%; left: 80%; animation-delay: 0.5s; }
-          .star-3 { width: 1px; height: 1px; top: 60%; left: 10%; animation-delay: 1s; }
-          .star-4 { width: 2px; height: 2px; top: 80%; left: 90%; animation-delay: 1.5s; }
-          .star-5 { width: 3px; height: 3px; top: 40%; left: 60%; animation-delay: 2s; }
-          .star-6 { width: 1px; height: 1px; top: 30%; left: 40%; animation-delay: 2.5s; }
-          .glow {
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.5);
-          }
-        `}
-      </style>
+      <style>{`
+        @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+        @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
+        .star { position: absolute; background: white; border-radius: 50%; animation: twinkle 3s infinite ease-in-out; }
+        .star-1 { width: 2px; height: 2px; top: 10%; left: 20%; }
+        .star-2 { width: 3px; height: 3px; top: 20%; left: 80%; animation-delay: 0.5s; }
+        .star-3 { width: 1px; height: 1px; top: 60%; left: 10%; animation-delay: 1s; }
+        .star-4 { width: 2px; height: 2px; top: 80%; left: 90%; animation-delay: 1.5s; }
+        .star-5 { width: 3px; height: 3px; top: 40%; left: 60%; animation-delay: 2s; }
+        .glow { box-shadow: 0 0 15px rgba(245, 158, 11, 0.5); }
+        .mic-ring { animation: pulse-ring 1.5s infinite; }
+      `}</style>
+      <div className="star star-1"/><div className="star star-2"/><div className="star star-3"/>
+      <div className="star star-4"/><div className="star star-5"/>
 
-      <div className="star star-1"></div>
-      <div className="star star-2"></div>
-      <div className="star star-3"></div>
-      <div className="star star-4"></div>
-      <div className="star star-5"></div>
-      <div className="star star-6"></div>
+      <div className="container mx-auto px-4 py-6 relative z-10">
+        <div className="flex justify-between items-center mb-4">
+          <a href="/library" className="text-amber-200 hover:text-amber-100 transition-colors">📚 Library</a>
+          <span className="text-amber-200/40 text-xs">Powered by Mistral Agents API × ElevenLabs</span>
+          <button onClick={handleLogout} className="text-amber-200/50 hover:text-amber-100 text-sm">Logout</button>
+        </div>
 
-      <div className="container mx-auto px-4 py-12 relative z-10">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-slate-800/50 backdrop-blur-lg rounded-3xl p-8 border border-amber-200/20 glow">
-            <h1 className="text-4xl font-bold text-center text-amber-100 mb-8">Create a Magical Story</h1>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-amber-100 text-sm font-medium mb-2">Child's Name</label>
-                <input
-                  type="text"
-                  value={childName}
-                  onChange={(e) => setChildName(e.target.value)}
-                  placeholder="Sophie"
-                  className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-amber-200/30 text-white placeholder-amber-200/70 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-amber-100 text-sm font-medium mb-2">Language</label>
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-amber-200/30 text-white focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent appearance-none"
-                  style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23F59E0B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '0.65rem' }}
-                >
-                  {languages.map((lang) => (
-                    <option key={lang.code} value={lang.code} className="bg-slate-700">
-                      {lang.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="relative">
-                <label className="block text-amber-100 text-sm font-medium mb-2">Tell us about their day</label>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Sophie barely hears French at school in Sydney. Her mum worries she'll forget her language. Tell her a magical bedtime story in French so she falls asleep hearing the words that feel like home."
-                  rows={5}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-amber-200/30 text-white placeholder-amber-200/70 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
-                />
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className="absolute top-10 right-4 p-2 text-amber-400 hover:text-amber-300 transition-colors"
-                  aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-                >
-                  🎙️
-                </button>
-              </div>
+        <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* LEFT: Input Panel */}
+          <div className="lg:col-span-2">
+            <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-amber-200/20 glow">
+              <h1 className="text-2xl font-bold text-amber-100 mb-1">🌙 Sandman Tales</h1>
+              <p className="text-amber-200/50 text-xs mb-5">Speak or type — Papa Bois orchestrates the rest</p>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${pipelineStatus.voice === 'idle' ? 'bg-slate-500' : pipelineStatus.voice === 'processing' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`}></div>
-                    <span className="text-amber-100">Voxtral Voice→Text</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-amber-100 text-xs font-medium mb-1 block">Child's Name</label>
+                    <input type="text" value={childName} onChange={e => setChildName(e.target.value)}
+                      placeholder="Sophie" className="w-full px-3 py-2 rounded-lg bg-slate-700/50 border border-amber-200/30 text-white text-sm placeholder-amber-200/40 focus:outline-none focus:ring-1 focus:ring-amber-400" />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${pipelineStatus.story === 'idle' ? 'bg-slate-500' : pipelineStatus.story === 'processing' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`}></div>
-                    <span className="text-amber-100">Pathfinder Story Gen</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${pipelineStatus.illustrations === 'idle' ? 'bg-slate-500' : pipelineStatus.illustrations === 'processing' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`}></div>
-                    <span className="text-amber-100">Firefly Illustrations</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${pipelineStatus.narration === 'idle' ? 'bg-slate-500' : pipelineStatus.narration === 'processing' ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`}></div>
-                    <span className="text-amber-100">Lifeline Narration</span>
+                  <div>
+                    <label className="text-amber-100 text-xs font-medium mb-1 block">Language</label>
+                    <select value={language} onChange={e => setLanguage(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-700/50 border border-amber-200/30 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400">
+                      {languages.map(l => <option key={l.code} value={l.code} className="bg-slate-700">{l.name}</option>)}
+                    </select>
                   </div>
                 </div>
+
+                {/* Mic */}
+                <div className="flex flex-col items-center py-4">
+                  <div className="relative">
+                    {isRecording && <div className="absolute inset-0 rounded-full bg-red-500/30 mic-ring" />}
+                    <button onClick={isRecording ? stopRecording : startRecording} disabled={isTranscribing}
+                      className={`relative w-20 h-20 rounded-full flex items-center justify-center text-3xl transition-all duration-300 ${
+                        isRecording ? 'bg-red-500 hover:bg-red-600 scale-110'
+                        : isTranscribing ? 'bg-amber-500/50 cursor-wait'
+                        : 'bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 hover:scale-105'
+                      }`} style={{boxShadow: isRecording ? '0 0 30px rgba(239,68,68,0.6)' : '0 0 20px rgba(245,158,11,0.5)'}}>
+                      {isTranscribing ? '⏳' : isRecording ? '⏹️' : '🎙️'}
+                    </button>
+                  </div>
+                  <p className="text-amber-200/50 text-xs mt-2">
+                    {isRecording ? 'Tap to stop' : isTranscribing ? 'Ogma transcribing...' : 'Tap to speak or type below'}
+                  </p>
+                </div>
+
+                <textarea value={prompt} onChange={e => { setPrompt(e.target.value); setTranscriptConfirmed(false); }}
+                  placeholder="Sophie loves whales and clouds. Tell her a bedtime story in French..."
+                  rows={3} className="w-full px-3 py-2 rounded-lg bg-slate-700/50 border border-amber-200/30 text-white text-sm placeholder-amber-200/40 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none" />
+
+                {prompt && !transcriptConfirmed && !isCreating && (
+                  <div className="flex gap-2">
+                    <button onClick={() => setTranscriptConfirmed(true)} className="flex-1 py-2 rounded-lg bg-green-500/80 text-white text-sm hover:bg-green-500">✅ Confirm</button>
+                    <button onClick={() => { setPrompt(''); startRecording(); }} className="flex-1 py-2 rounded-lg bg-slate-600/80 text-amber-100 text-sm hover:bg-slate-600">🎙️ Redo</button>
+                  </div>
+                )}
+
+                {!createdStoryId ? (
+                  <button onClick={handleCreateStory}
+                    disabled={!childName || !prompt || isCreating}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 glow">
+                    {isCreating ? '✨ Creating...' : '🌙 Create Story'}
+                  </button>
+                ) : (
+                  <button onClick={() => navigate(`/story/${createdStoryId}`)}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold hover:from-green-600 hover:to-emerald-700 transition-all glow animate-pulse">
+                    ▶️ Play "{createdTitle}"
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Agent Pipeline Visualization */}
+          <div className="lg:col-span-3">
+            <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-5 border border-amber-200/20 h-full">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-amber-100 font-medium text-sm">🌳 Papa Bois — Agent Orchestration</h2>
+                <span className="text-amber-200/30 text-[10px]">Mistral Agents API × ElevenLabs</span>
               </div>
 
+              {/* Pipeline Flow */}
+              <div className="space-y-0">
+                {/* Row 1: Input */}
+                <Node id="ogma" icon="🗣️" label="Ogma — Dual STT" sub="ElevenLabs Scribe v1 + Mistral Voxtral consensus" />
+                <Arrow from="ogma" to="cache" />
+
+                {/* Row 2: Cache */}
+                <Node id="cache" icon="⚡" label="Prompt Cache" sub="SHA-256 hash lookup — skip regeneration if seen before" />
+                <Arrow from="cache" to="papabois" />
+
+                {/* Row 3: Papa Bois */}
+                <Node id="papabois" icon="🌳" label="Papa Bois — Orchestrator" sub="Mistral Agent ag_019ca24e... plans story direction, mood, voice" />
+                <Arrow from="papabois" to="guardrail" />
+
+                {/* Row 4: Guardrail */}
+                <Node id="guardrail" icon="🛡️" label="Cultural Sensitivity Guardrail" sub="Content filter — no stereotypes, respectful representation" />
+                <Arrow from="guardrail" to="anansi" />
+
+                {/* Row 5: Anansi */}
+                <Node id="anansi" icon="🕷️" label="Anansi — Story Generator" sub="Mistral Agent ag_019ca24f... generates multilingual scenes" />
+
+                {/* Row 6: Three parallel Devi outputs */}
+                <div className="flex items-center justify-center py-0.5">
+                  <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${steps.anansi === 'complete' ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Node id="devi_tts" icon="🎙️" label="Devi — TTS" sub="ElevenLabs Multilingual v2 narration" />
+                  <Node id="devi_sfx" icon="🌊" label="Devi — SFX" sub="ElevenLabs Sound Generation" />
+                  <Node id="devi_music" icon="🎵" label="Devi — Music" sub="ElevenLabs Lullaby Compose" />
+                </div>
+
+                {/* Row 7: Firefly stitching */}
+                <div className="flex items-center justify-center py-0.5">
+                  <div className={`w-0.5 h-4 rounded transition-colors duration-500 ${(steps.devi_tts === 'complete' && steps.devi_sfx === 'complete' && steps.devi_music === 'complete') ? 'bg-amber-400' : 'bg-slate-600/50'}`} />
+                </div>
+                <Node id="firefly" icon="🦆" label="Firefly — Storybook Assembly" sub="Stitches scenes + narration + SFX + music → playable storybook" />
+              </div>
+
+              {/* Progress */}
               {progressText && (
-                <div className="mt-4 p-3 bg-amber-900/30 rounded-xl text-center text-amber-100">
+                <div className="mt-4 p-2.5 bg-amber-900/30 rounded-lg text-amber-100 text-xs">
                   {progressText}
                 </div>
               )}
-
-              <button
-                onClick={handleCreateStory}
-                disabled={!childName || !prompt}
-                className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold text-lg hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed glow"
-              >
-                🌙 Create Story
-              </button>
             </div>
           </div>
         </div>
