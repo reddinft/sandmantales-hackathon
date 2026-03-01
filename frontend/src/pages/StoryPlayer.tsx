@@ -6,11 +6,14 @@ const StoryPlayer: React.FC = () => {
   const [story, setStory] = useState<any>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [sfxPlaying, setSfxPlaying] = useState(false);
+  const [autoPlaying, setAutoPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sfxRef = useRef<HTMLAudioElement>(null);
   const lullabyRef = useRef<HTMLAudioElement>(null);
+  const stopRef = useRef(false);
   const API = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
@@ -21,7 +24,6 @@ const StoryPlayer: React.FC = () => {
   }, [id]);
 
   const fetchAudio = async (sceneKey: string): Promise<string | null> => {
-    // Try cached audio first
     if (story?.has_audio?.[sceneKey]) {
       try {
         const res = await fetch(`${API}/api/stories/${id}/audio/${sceneKey}`);
@@ -31,7 +33,6 @@ const StoryPlayer: React.FC = () => {
         }
       } catch {}
     }
-    // Fall back to live TTS
     if (story?.scenes?.[parseInt(sceneKey)]) {
       const res = await fetch(`${API}/api/narrate`, {
         method: 'POST',
@@ -51,14 +52,49 @@ const StoryPlayer: React.FC = () => {
   };
 
   const handleListen = async () => {
+    if (isPaused && audioRef.current) {
+      audioRef.current.play();
+      setIsPaused(false);
+      setIsPlaying(true);
+      return;
+    }
     setIsLoading(true);
     const url = await fetchAudio(String(currentSceneIndex));
     if (url && audioRef.current) {
       audioRef.current.src = url;
       audioRef.current.play();
       setIsPlaying(true);
+      setIsPaused(false);
     }
     setIsLoading(false);
+  };
+
+  const handlePause = () => {
+    if (audioRef.current && isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      setIsPaused(true);
+    }
+  };
+
+  const handleStop = () => {
+    stopRef.current = true;
+    setAutoPlaying(false);
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    if (sfxRef.current) { sfxRef.current.pause(); sfxRef.current.currentTime = 0; }
+    if (lullabyRef.current) { lullabyRef.current.pause(); lullabyRef.current.currentTime = 0; }
+    setIsPlaying(false);
+    setIsPaused(false);
+    setSfxPlaying(false);
+  };
+
+  const handleRestart = async () => {
+    handleStop();
+    setCurrentSceneIndex(0);
+    await new Promise(r => setTimeout(r, 100));
+    stopRef.current = false;
+    setAutoPlaying(true);
+    startAutoPlay(0);
   };
 
   const toggleAmbient = async () => {
@@ -68,7 +104,6 @@ const StoryPlayer: React.FC = () => {
       setSfxPlaying(false);
       return;
     }
-    // Start ambient layers
     if (story?.has_audio?.sfx) {
       try {
         const res = await fetch(`${API}/api/stories/${id}/audio/sfx`);
@@ -96,15 +131,15 @@ const StoryPlayer: React.FC = () => {
     setSfxPlaying(true);
   };
 
-  const handleAutoPlay = async () => {
+  const startAutoPlay = async (fromScene: number) => {
     if (!story?.scenes) return;
-    // Start ambient
     if (!sfxPlaying) toggleAmbient();
-    
-    for (let i = currentSceneIndex; i < story.scenes.length; i++) {
+    for (let i = fromScene; i < story.scenes.length; i++) {
+      if (stopRef.current) break;
       setCurrentSceneIndex(i);
       setIsLoading(true);
       const url = await fetchAudio(String(i));
+      if (stopRef.current) break;
       if (url && audioRef.current) {
         audioRef.current.src = url;
         setIsPlaying(true);
@@ -113,11 +148,17 @@ const StoryPlayer: React.FC = () => {
           audioRef.current!.onended = () => resolve();
           audioRef.current!.play();
         });
-        // Small pause between scenes
+        if (stopRef.current) break;
         await new Promise(r => setTimeout(r, 1000));
       }
     }
-    setIsPlaying(false);
+    if (!stopRef.current) { setIsPlaying(false); setAutoPlaying(false); }
+  };
+
+  const handleAutoPlay = async () => {
+    stopRef.current = false;
+    setAutoPlaying(true);
+    startAutoPlay(currentSceneIndex);
   };
 
   if (!story) return (
@@ -154,10 +195,10 @@ const StoryPlayer: React.FC = () => {
             <p className="text-amber-200/60 mt-1">
               👤 {story.child_name} · 🌐 {story.language?.toUpperCase()} · ✨ {story.mood}
               {hasCachedAudio && <span className="ml-2 px-2 py-0.5 bg-green-500/20 text-green-300 text-xs rounded-full">⚡ Instant Audio</span>}
+              {story.has_images?.img_0 && <span className="ml-1 px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded-full">🎨 Illustrated</span>}
             </p>
           </div>
 
-          {/* 3-Layer Audio Controls */}
           {hasCachedAudio && (
             <div className="flex justify-center gap-4 mb-4">
               <button onClick={toggleAmbient}
@@ -165,11 +206,7 @@ const StoryPlayer: React.FC = () => {
                 {sfxPlaying ? '🔊 Ambient ON' : '🔇 Ambient OFF'}
               </button>
               <div className="flex items-center gap-2 text-amber-200/40 text-xs">
-                <span>🎙️ Narration 100%</span>
-                <span>·</span>
-                <span>🌊 SFX 30%</span>
-                <span>·</span>
-                <span>🎵 Lullaby 20%</span>
+                <span>🎙️ Narration 100%</span> · <span>🌊 SFX 30%</span> · <span>🎵 Lullaby 20%</span>
               </div>
             </div>
           )}
@@ -177,7 +214,7 @@ const StoryPlayer: React.FC = () => {
           <div className="bg-slate-700/30 rounded-2xl p-6 mb-6 min-h-[200px]">
             {story.has_images?.[`img_${currentSceneIndex}`] && (
               <div className="mb-4 rounded-xl overflow-hidden shadow-lg">
-                <img 
+                <img
                   src={`${API}/api/stories/${id}/image/${currentSceneIndex}`}
                   alt={`Scene ${currentSceneIndex + 1} illustration`}
                   className="w-full h-auto max-h-[400px] object-cover"
@@ -188,37 +225,53 @@ const StoryPlayer: React.FC = () => {
             <p className="text-amber-50 text-lg leading-relaxed">{scene}</p>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <button onClick={() => setCurrentSceneIndex(Math.max(0, currentSceneIndex - 1))}
                 disabled={currentSceneIndex === 0}
-                className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-30 transition-colors">
-                ◀
-              </button>
-              <span className="text-amber-100 text-sm">
-                Scene {currentSceneIndex + 1} / {story.scenes?.length || 0}
-              </span>
+                className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-30 transition-colors">◀</button>
+              <span className="text-amber-100 text-sm">Scene {currentSceneIndex + 1} / {story.scenes?.length || 0}</span>
               <button onClick={() => setCurrentSceneIndex(Math.min((story.scenes?.length || 1) - 1, currentSceneIndex + 1))}
                 disabled={currentSceneIndex >= (story.scenes?.length || 1) - 1}
-                className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-30 transition-colors">
-                ▶
-              </button>
+                className="p-2 rounded-full bg-amber-200/20 text-amber-100 hover:bg-amber-200/30 disabled:opacity-30 transition-colors">▶</button>
             </div>
 
-            <div className="flex gap-3">
-              <button onClick={handleListen} disabled={isLoading}
-                className="px-5 py-2 rounded-xl bg-amber-500/80 text-white font-medium hover:bg-amber-500 transition-all disabled:opacity-50">
-                {isLoading ? '⏳' : isPlaying ? '🔊 Playing' : '🎧 Listen'}
+            <div className="flex gap-2 flex-wrap">
+              {isPlaying ? (
+                <button onClick={handlePause}
+                  className="px-4 py-2 rounded-xl bg-amber-500/80 text-white font-medium hover:bg-amber-500 transition-all">
+                  ⏸ Pause
+                </button>
+              ) : (
+                <button onClick={handleListen} disabled={isLoading}
+                  className="px-4 py-2 rounded-xl bg-amber-500/80 text-white font-medium hover:bg-amber-500 transition-all disabled:opacity-50">
+                  {isLoading ? '⏳' : isPaused ? '▶ Resume' : '🎧 Listen'}
+                </button>
+              )}
+
+              {(isPlaying || isPaused || autoPlaying) && (
+                <button onClick={handleStop}
+                  className="px-4 py-2 rounded-xl bg-red-500/70 text-white font-medium hover:bg-red-500 transition-all">
+                  ⏹ Stop
+                </button>
+              )}
+
+              <button onClick={handleRestart}
+                className="px-4 py-2 rounded-xl bg-slate-600/70 text-amber-100 font-medium hover:bg-slate-600 transition-all">
+                ↻ Restart
               </button>
-              <button onClick={handleAutoPlay} disabled={isPlaying || isLoading}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-medium hover:from-purple-600 hover:to-indigo-600 transition-all disabled:opacity-50">
-                🌙 Play All
-              </button>
+
+              {!autoPlaying && (
+                <button onClick={handleAutoPlay} disabled={isPlaying || isLoading}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-medium hover:from-purple-600 hover:to-indigo-600 transition-all disabled:opacity-50">
+                  🌙 Play All
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
-      <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
+      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); setIsPaused(false); }} />
       <audio ref={sfxRef} />
       <audio ref={lullabyRef} />
     </div>
